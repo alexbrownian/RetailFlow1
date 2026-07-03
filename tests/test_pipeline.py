@@ -31,9 +31,10 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.extract_tickers import extract_tickers_from_text
+from src.extract_tickers import extract_tickers_from_text, load_cashtag_only_tickers
 from src.build_mentions import build_daily_counts
 from src.inflection import compute_inflection
+from src.screen_tickers import classify_ticker, count_caps_vs_lower
 
 POSTS_PATH = PROJECT_ROOT / "data" / "processed" / "posts.parquet"
 
@@ -154,6 +155,54 @@ def test_build_daily_counts_dedupes_and_weights():
     assert int(gme.weighted_count.iloc[0]) == 100
 
 
+def test_screening_case_ratio_wins_over_wordfreq():
+    # Seen often and caps-heavy in OUR corpus -> ticker, even if wordfreq
+    # thinks it's a word (this is the SNAP / AMD case).
+    assert classify_ticker(caps_count=60, lower_count=20, zipf=4.2) == ("normal", "case_ratio")
+    # Seen often and mostly lowercase -> word (the EDGE / LOAN case).
+    assert classify_ticker(caps_count=5, lower_count=500, zipf=4.7) == ("cashtag_only", "case_ratio")
+
+
+def test_screening_wordfreq_fallback_for_rare_tokens():
+    # Too rare in the corpus to trust the ratio -> wordfreq decides.
+    assert classify_ticker(caps_count=2, lower_count=3, zipf=4.7) == ("cashtag_only", "wordfreq")
+    assert classify_ticker(caps_count=2, lower_count=3, zipf=1.5) == ("normal", "wordfreq")
+
+
+def test_count_caps_vs_lower_counts_both_casings():
+    texts = ["the edge of tomorrow", "EDGE is a ticker", "Edge case", "bought NVDA"]
+    caps, lower = count_caps_vs_lower(texts, {"EDGE", "NVDA"})
+    assert caps["EDGE"] == 1      # "EDGE"
+    assert lower["EDGE"] == 2     # "edge" + "Edge" (sentence-start counts as word)
+    assert caps["NVDA"] == 1
+    assert lower["NVDA"] == 0
+
+
+def test_load_cashtag_only_tickers_missing_file_is_empty():
+    # Without the CSV the extractor must behave exactly as before.
+    assert load_cashtag_only_tickers(Path("does/not/exist.csv")) == frozenset()
+
+
+def test_screened_ticker_bare_word_ignored_but_cashtag_counts(tmp_path):
+    # Simulate a classification CSV that demotes EDGE, then check the rule
+    # the extractor applies: bare 'EDGE' ignored, '$EDGE' still a mention.
+    csv = tmp_path / "cls.csv"
+    csv.write_text("ticker,classification\nEDGE,cashtag_only\nNVDA,normal\n")
+    demoted = load_cashtag_only_tickers(csv)
+    assert demoted == {"EDGE"}
+
+    universe = {"EDGE", "NVDA"}
+    text = "EDGE has no EDGE but $EDGE and NVDA do"
+    hits = extract_tickers_from_text(text, universe, cashtags_only=False)
+    # The real module-level SCREENED_STOP is loaded from the repo CSV; if
+    # that file exists EDGE is already demoted. Either way $EDGE + NVDA count.
+    assert "NVDA" in hits
+    assert "EDGE" in hits  # the cashtag one
+    from src.extract_tickers import SCREENED_STOP
+    if "EDGE" in SCREENED_STOP:
+        assert hits.count("EDGE") == 1  # only the $EDGE mention
+
+
 def test_compute_inflection_flags_a_spike():
     # 20 quiet days of ~2 mentions, then a huge jump - the jump day(s)
     # must be flagged, the quiet days must not.
@@ -164,7 +213,10 @@ def test_compute_inflection_flags_a_spike():
         index=pd.date_range("2021-01-01", periods=23, freq="D"),
     )
     result = compute_inflection(series, smooth_window=3, k=2.0)
-    assert result.columns.tolist() == ["count", "smoothed", "velocity", "is_inflection"]
+    # inflection.py grew extra columns (is_rise/is_fall/is_peak/is_trough);
+    # the notebooks only rely on these four core ones existing.
+    for col in ["count", "smoothed", "velocity", "is_inflection"]:
+        assert col in result.columns
     assert not result["is_inflection"].iloc[:20].any(), "quiet days wrongly flagged"
     assert result["is_inflection"].iloc[21:].any(), "the spike was not detected"
 

@@ -4,3 +4,4 @@ matplotlib
 zstandard
 requests
 jupyter
+wordfreq

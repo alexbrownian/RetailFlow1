@@ -266,12 +266,35 @@ BARE_PROSE_STOP: frozenset[str] = frozenset(
         "SEEM",
         "SIZE",
         "TEST",
+        "TLDR",
     }
 )
 
 CASHTAG = re.compile(r"\$([A-Z]{1,5})\b")
 # Bare caps: 4–5 letters only (avoids YOU, FOR, ARE, ON, … as tickers).
 WORD_BARE = re.compile(r"\b([A-Z]{4,5})\b")
+
+# Data-driven word-ticker screening (see src/screen_tickers.py): tickers
+# classified 'cashtag_only' there are English words in disguise (EDGE, LOAN,
+# RENT ...). Their bare-caps mentions are ignored; $CASHTAG mentions still
+# count. Regenerate the CSV via notebook 01 or `python -m src.screen_tickers`.
+CLASSIFICATION_CSV = (
+    Path(__file__).resolve().parent.parent
+    / "data" / "reference" / "ticker_classification.csv"
+)
+
+
+def load_cashtag_only_tickers(path: Path = CLASSIFICATION_CSV) -> frozenset[str]:
+    """Read screen_tickers.py's output. Returns an empty set if the CSV
+    hasn't been generated yet, so everything still works without it."""
+    if not Path(path).is_file():
+        return frozenset()
+    df = pd.read_csv(path)
+    return frozenset(df.loc[df["classification"] == "cashtag_only", "ticker"])
+
+
+# Loaded once at import time.
+SCREENED_STOP: frozenset[str] = load_cashtag_only_tickers()
 
 
 def _strip_cashtags_for_word_pass(text_upper: str) -> str:
@@ -313,7 +336,7 @@ def extract_tickers_from_text(
     stripped = _strip_cashtags_for_word_pass(text)
     for m in WORD_BARE.finditer(stripped):
         sym = m.group(1)
-        if sym in STOP_TICKERS or sym in BARE_PROSE_STOP:
+        if sym in STOP_TICKERS or sym in BARE_PROSE_STOP or sym in SCREENED_STOP:
             continue
         if sym in universe:
             out.append(sym)

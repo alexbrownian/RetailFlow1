@@ -2,6 +2,7 @@
 data/raw/*
 !data/raw/PUT_DATA_HERE.txt
 data/processed/posts.parquet
+data/processed/posts_slice.parquet
 
 # junk / regenerable
 __pycache__/
