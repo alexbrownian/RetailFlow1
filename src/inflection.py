@@ -32,9 +32,13 @@ import argparse
 import datetime
 
 import pandas as pd
+from scipy.signal import find_peaks
 
-import matplotlib
-matplotlib.use("Agg")
+# NOTE: don't call matplotlib.use("Agg") here - it forces a non-interactive
+# backend for anyone who *imports* this module, which silently kills inline
+# plotting in notebooks (plt.show() becomes a no-op). savefig()/close() in
+# plot_inflection() below work fine on whatever backend is already active,
+# so there's no need to force one at import time.
 import matplotlib.pyplot as plt
 
 
@@ -83,16 +87,32 @@ def build_daily_series(df, ticker, value_col="mention_count"):
     return series
 
 
-def compute_inflection(series, smooth_window, k):
+def compute_inflection(series, smooth_window, k, peak_k=3.0):
     """
     Take a daily count series and return a DataFrame with:
       count           - raw mentions
       smoothed        - rolling average (less noisy)
       velocity        - first derivative (change in smoothed vs yesterday)
-      is_inflection   - True on days where velocity is unusually high
+      is_inflection   - True on days where velocity is unusually high (alias
+                        of is_rise, kept for backwards compatibility)
+      is_rise         - "take-off": velocity spikes well above normal (concave
+                        up - attention accelerating)
+      is_fall         - "sell-off": velocity drops well below normal (concave
+                        down and dropping fast - attention collapsing)
+      is_peak         - a genuine local high of the smoothed line (it rose
+                        into this day and fell back out of it)
+      is_trough       - a genuine local low of the smoothed line (it fell
+                        into this day and rose back out of it)
 
     smooth_window : how many days to average over (e.g. 3 or 7)
-    k             : how many standard deviations above normal counts as a spike
+    k             : how many standard deviations away from normal counts as
+                    a spike (used symmetrically for both rise and fall)
+    peak_k        : how many standard deviations of "prominence" a local
+                    max/min needs to count as a real peak/trough, rather than
+                    day-to-day noise. Naively marking every day the velocity
+                    changes sign flags dozens of tiny wiggles per year; this
+                    keeps only turns that actually stand out from their
+                    surroundings (scipy's "prominence").
     """
     out = pd.DataFrame({"count": series})
 
@@ -102,49 +122,77 @@ def compute_inflection(series, smooth_window, k):
     # 2) First derivative: today's smoothed value minus yesterday's.
     out["velocity"] = out["smoothed"].diff().fillna(0)
 
-    # 3) Threshold = typical change + k * how spread out the changes are.
+    # 3) Thresholds = typical change +/- k * how spread out the changes are.
     average_change = out["velocity"].mean()
     spread = out["velocity"].std()
-    threshold = average_change + k * spread
+    rise_threshold = average_change + k * spread
+    fall_threshold = average_change - k * spread
 
-    # 4) Flag the inflection days (growing fast AND clearly above the threshold).
-    out["is_inflection"] = (out["velocity"] > threshold) & (out["velocity"] > 0)
+    # 4) Flag the rise/fall days (clearly above or below the threshold).
+    out["is_rise"] = (out["velocity"] > rise_threshold) & (out["velocity"] > 0)
+    out["is_fall"] = (out["velocity"] < fall_threshold) & (out["velocity"] < 0)
+    out["is_inflection"] = out["is_rise"]  # backwards-compatible alias
 
-    # Keep the threshold around so we can draw it on the plot later.
-    out.attrs["threshold"] = threshold
+    # 5) Peaks/troughs: prominent local turns of the smoothed line - i.e. the
+    #    "rose here, fell here" moments, not every tiny up-down wiggle.
+    smoothed_vals = out["smoothed"].to_numpy()
+    prominence = peak_k * (out["smoothed"].std() or 1.0)
+    peak_idx, _ = find_peaks(smoothed_vals, prominence=prominence)
+    trough_idx, _ = find_peaks(-smoothed_vals, prominence=prominence)
+    out["is_peak"] = False
+    out["is_trough"] = False
+    out.iloc[peak_idx, out.columns.get_loc("is_peak")] = True
+    out.iloc[trough_idx, out.columns.get_loc("is_trough")] = True
+
+    # Keep the thresholds around so we can draw them on the plot later.
+    out.attrs["threshold"] = rise_threshold
+    out.attrs["fall_threshold"] = fall_threshold
     return out
 
 
 def plot_inflection(result, ticker, out_path):
-    """Two stacked charts: mentions on top, velocity (first derivative) below."""
+    """Two stacked charts: mentions on top, velocity (first derivative) below.
+    Rise/fall spikes and peak/trough turning points are annotated on both."""
     dates = result.index
     threshold = result.attrs["threshold"]
-    inflection_days = result[result["is_inflection"]]
+    fall_threshold = result.attrs["fall_threshold"]
+    rise_days = result[result["is_rise"]]
+    fall_days = result[result["is_fall"]]
+    peak_days = result[result["is_peak"]]
+    trough_days = result[result["is_trough"]]
 
     fig, (ax_top, ax_bottom) = plt.subplots(
         2, 1, figsize=(12, 8), sharex=True, gridspec_kw={"height_ratios": [2, 1]}
     )
 
-    # --- Top: raw + smoothed mentions, with inflection days marked ---
+    # --- Top: raw + smoothed mentions, with rise/fall/peak/trough marked ---
     ax_top.plot(dates, result["count"], color="lightgray", label="raw mentions")
     ax_top.plot(dates, result["smoothed"], color="steelblue", linewidth=2,
                 label="smoothed mentions")
-    ax_top.scatter(inflection_days.index, inflection_days["smoothed"],
-                   color="red", zorder=5, label="inflection day")
+    ax_top.scatter(rise_days.index, rise_days["smoothed"], color="green", marker="^",
+                   s=60, zorder=5, label="rise (take-off)")
+    ax_top.scatter(fall_days.index, fall_days["smoothed"], color="crimson", marker="v",
+                   s=60, zorder=5, label="fall (sell-off)")
+    for d in peak_days.index:
+        ax_top.axvline(d, color="gray", linestyle=":", linewidth=1, alpha=0.7)
+    for d in trough_days.index:
+        ax_top.axvline(d, color="gray", linestyle=":", linewidth=1, alpha=0.4)
     ax_top.set_title(ticker + " - mentions per day")
     ax_top.set_ylabel("mentions")
     ax_top.legend()
     ax_top.grid(True, alpha=0.3)
 
-    # --- Bottom: the first derivative (velocity) and the threshold line ---
+    # --- Bottom: the first derivative (velocity) and the thresholds ---
     ax_bottom.plot(dates, result["velocity"], color="darkorange",
                    label="first derivative (velocity)")
-    ax_bottom.axhline(threshold, color="red", linestyle="--",
-                      label="spike threshold")
+    ax_bottom.axhline(threshold, color="green", linestyle="--",
+                      label="rise threshold")
+    ax_bottom.axhline(fall_threshold, color="crimson", linestyle="--",
+                      label="fall threshold")
     ax_bottom.axhline(0, color="black", linewidth=0.6)
-    ax_bottom.scatter(inflection_days.index, inflection_days["velocity"],
-                      color="red", zorder=5)
-    ax_bottom.set_title("First derivative - how fast mentions are growing")
+    ax_bottom.scatter(rise_days.index, rise_days["velocity"], color="green", marker="^", zorder=5)
+    ax_bottom.scatter(fall_days.index, fall_days["velocity"], color="crimson", marker="v", zorder=5)
+    ax_bottom.set_title("First derivative - how fast mentions are growing/shrinking")
     ax_bottom.set_ylabel("change vs prior day")
     ax_bottom.set_xlabel("date")
     ax_bottom.legend()

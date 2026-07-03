@@ -241,6 +241,31 @@ BARE_PROSE_STOP: frozenset[str] = frozenset(
         "USED",
         "WAYS",
         "WEEK",
+        # --- words Redditors often type in ALL CAPS that are also real
+        # --- tickers/ETFs; cashtags ($HODL) still count, bare caps don't.
+        "AWAY",
+        "CASH",
+        "EASY",
+        "EDGE",
+        "FREE",
+        "GOLD",
+        "HODL",
+        "HUGE",
+        "LOAN",
+        "LOSS",
+        "MEME",
+        "MOON",
+        "NICE",
+        "PLAN",
+        "PLAY",
+        "PUMP",
+        "REAL",
+        "RIDE",
+        "SAFE",
+        "SAVE",
+        "SEEM",
+        "SIZE",
+        "TEST",
     }
 )
 
@@ -280,7 +305,12 @@ def extract_tickers_from_text(
     if cashtags_only:
         return out
 
-    stripped = _strip_cashtags_for_word_pass(t)
+    # IMPORTANT: scan the ORIGINAL text, not the uppercased copy. Only words
+    # the poster actually wrote in ALL CAPS ("bought NVDA calls") can be bare
+    # tickers. Uppercasing first would turn every ordinary word ("edge",
+    # "loan", "meme") into a fake all-caps match - that bug once made EDGE
+    # and LOAN look like top-mentioned tickers.
+    stripped = _strip_cashtags_for_word_pass(text)
     for m in WORD_BARE.finditer(stripped):
         sym = m.group(1)
         if sym in STOP_TICKERS or sym in BARE_PROSE_STOP:
