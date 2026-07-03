@@ -35,6 +35,13 @@ from src.extract_tickers import extract_tickers_from_text, load_cashtag_only_tic
 from src.build_mentions import build_daily_counts
 from src.inflection import compute_inflection
 from src.screen_tickers import classify_ticker, count_caps_vs_lower
+from src.themes import (
+    THEME_KEYWORDS,
+    build_daily_theme_counts,
+    build_inferred_theme_counts,
+    combine_theme_signals,
+    themes_in_text,
+)
 
 POSTS_PATH = PROJECT_ROOT / "data" / "processed" / "posts.parquet"
 
@@ -219,6 +226,70 @@ def test_compute_inflection_flags_a_spike():
         assert col in result.columns
     assert not result["is_inflection"].iloc[:20].any(), "quiet days wrongly flagged"
     assert result["is_inflection"].iloc[21:].any(), "the spike was not detected"
+
+
+def test_theme_keywords_contain_no_bare_ticker_symbols():
+    # Keyword matching is case-insensitive, so a bare symbol like C or O
+    # would match every ordinary "c"/"o" in prose. Ticker exposure belongs
+    # in THEME_TICKERS (the inferred signal), never in THEME_KEYWORDS.
+    known_offenders = {"C", "O", "MU", "LI", "BP", "MS", "GS", "JD",
+                       "GLD", "SLV", "NVDA", "TSLA", "GME", "AMC"}
+    for theme, keywords in THEME_KEYWORDS.items():
+        hits = known_offenders.intersection(keywords)
+        assert not hits, f"theme '{theme}' contains bare ticker symbol(s): {hits}"
+
+
+def test_themes_in_text_words_and_phrases():
+    found = themes_in_text("HBM memory pricing is up, Micron capacity tight")
+    assert "memory" in found
+    found = themes_in_text("this is a short squeeze on a low float stock")
+    assert "short_squeeze" in found
+    # Whole-token matching: "golden" must NOT hit the gold theme.
+    assert "gold_metals" not in themes_in_text("the golden retriever era")
+    assert "gold_metals" in themes_in_text("buying gold as an inflation hedge")
+
+
+def test_build_daily_theme_counts_dedupes_and_weights():
+    # One post hits the same theme via several keywords -> counts ONCE,
+    # weighted by score squared (10^2 = 100). Same rules as the ticker side.
+    posts = pd.DataFrame([
+        {"date": "2021-01-27", "title": "gold and silver and copper!",
+         "selftext": "more gold talk", "score": 10},
+        {"date": "2021-01-27", "title": "nothing thematic here at all",
+         "selftext": "", "score": 50},
+    ])
+    counts = build_daily_theme_counts(posts)
+    gold = counts[(counts.theme == "gold_metals") & (counts.date == "2021-01-27")]
+    assert len(gold) == 1
+    assert int(gold.keyword_count.iloc[0]) == 1
+    assert int(gold.keyword_weighted.iloc[0]) == 100
+
+
+def test_build_inferred_theme_counts_maps_tickers_to_multiple_themes():
+    ticker_counts = pd.DataFrame([
+        {"date": "2021-01-27", "ticker": "NVDA", "mention_count": 7, "weighted_count": 49},
+        {"date": "2021-01-27", "ticker": "ZZZZ", "mention_count": 3, "weighted_count": 9},
+    ])
+    inferred = build_inferred_theme_counts(ticker_counts)
+    themes = set(inferred.theme)
+    # NVDA feeds all three of its themes; the unmapped ticker feeds none.
+    assert {"semiconductors", "ai", "ai_megacap"} <= themes
+    row = inferred[inferred.theme == "ai"].iloc[0]
+    assert int(row.inferred_count) == 7
+    assert int(row.inferred_weighted) == 49
+
+
+def test_combine_theme_signals_outer_joins_with_zeros():
+    kw = pd.DataFrame([{"date": "2021-01-27", "theme": "ai",
+                        "keyword_count": 5, "keyword_weighted": 25}])
+    inf = pd.DataFrame([{"date": "2021-01-27", "theme": "energy",
+                         "inferred_count": 3, "inferred_weighted": 9}])
+    combined = combine_theme_signals(kw, inf)
+    assert len(combined) == 2
+    ai = combined[combined.theme == "ai"].iloc[0]
+    assert int(ai.keyword_count) == 5 and int(ai.inferred_count) == 0
+    energy = combined[combined.theme == "energy"].iloc[0]
+    assert int(energy.inferred_count) == 3 and int(energy.keyword_count) == 0
 
 
 # ----------------------------------------------------------------------

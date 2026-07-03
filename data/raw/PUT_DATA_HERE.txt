@@ -1,1 +1,0 @@
-Put downloaded/torrented Reddit data files here (.zst, .ndjson, .csv, .parquet).

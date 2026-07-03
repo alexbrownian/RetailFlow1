@@ -1,4 +1,4 @@
-# GIC Retail Tracking
+# Personal Retail Tracking
 
 Track how often stock tickers are mentioned on Reddit over time, and detect the
 moment a ticker "takes off" (the first-derivative / inflection point).
