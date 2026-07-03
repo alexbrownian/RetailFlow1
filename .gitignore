@@ -1,0 +1,11 @@
+# big data - never commit
+data/raw/*
+!data/raw/PUT_DATA_HERE.txt
+data/processed/posts.parquet
+
+# junk / regenerable
+__pycache__/
+.pytest_cache/
+.DS_Store
+.venv/
+*.bak

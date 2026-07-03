@@ -1,0 +1,6 @@
+pandas
+pyarrow
+matplotlib
+zstandard
+requests
+jupyter
