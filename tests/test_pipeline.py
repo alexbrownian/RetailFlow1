@@ -173,4 +173,47 @@ def test_compute_inflection_flags_a_spike():
 # Group 3 - the notebooks themselves
 # ----------------------------------------------------------------------
 def test_notebooks_are_valid_json():
-    # Notebooks ar
+    # Notebooks are JSON; hand-editing them breaks the whole file (unescaped
+    # quotes etc.). This catches it early. Fix with:
+    #   python3 data_ingestion/scripts/check_notebooks.py --fix
+    nb_dir = PROJECT_ROOT / "notebooks"
+    import json
+    for path in sorted(nb_dir.glob("*.ipynb")):
+        with open(path, encoding="utf-8") as f:
+            json.load(f)  # raises with line/column if broken
+
+
+def test_notebooks_do_not_read_zst():
+    # Analysis notebooks must read posts.parquet, never the raw .zst dumps.
+    # (Raw-to-parquet conversion lives in data_ingestion/scripts/.)
+    import json
+    nb_dir = PROJECT_ROOT / "notebooks"
+    for path in sorted(nb_dir.glob("*.ipynb")):
+        nb = json.load(open(path, encoding="utf-8"))
+        for cell in nb["cells"]:
+            if cell["cell_type"] == "code":
+                src = "".join(cell["source"])
+                assert ".zst" not in src, f"{path.name} still references .zst files"
+
+
+# ----------------------------------------------------------------------
+# Group 4 - end-to-end on a real slice of the dataset
+# ----------------------------------------------------------------------
+def test_real_slice_through_pipeline():
+    # Take one small subreddit block (daytrading, ~90k posts) straight from
+    # the real parquet and push it through the same steps notebook 02 uses.
+    table = pq.read_table(
+        POSTS_PATH,
+        columns=["date", "subreddit", "title", "selftext", "score"],
+        filters=[("subreddit", "=", "daytrading")],
+    )
+    posts = table.to_pandas()
+    assert len(posts) == EXPECTED_SUBREDDITS["daytrading"]
+
+    # A tiny fixed universe keeps the test fast and internet-free.
+    counts = build_daily_counts(posts, {"GME", "AMC", "TSLA", "SPY"}, cashtags_only=True)
+    assert list(counts.columns) == ["date", "ticker", "mention_count", "weighted_count"]
+    assert (counts["mention_count"] > 0).all()
+
+    # Daytraders definitely talked about SPY at least once in 16 years.
+    assert "SPY" in set(counts["ticker"])

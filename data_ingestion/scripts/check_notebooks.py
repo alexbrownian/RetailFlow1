@@ -120,4 +120,13 @@ def main():
                     "" if do_fix else "  -> try --fix",
                 )
                 broken += 1
- 
+        print("  %-38s %s" % (name, status))
+
+    if broken:
+        print("\n%d notebook(s) still broken - open in Jupyter or fix by hand." % broken)
+        sys.exit(1)
+    print("\nAll notebooks are valid.")
+
+
+if __name__ == "__main__":
+    main()

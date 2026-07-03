@@ -209,4 +209,85 @@ unchanged.
 
 > **⚠️ Caveat — `score` and `num_comments` are snapshots, not final values.**
 > The archive dumps captured posts long after posting, so their scores are
-> *mature* (
+> *mature* (a viral post shows its full 50k upvotes). A live-fetched post
+> grabbed minutes after creation has a score near 0 — even if it later goes
+> viral. This means **upvote-weighted counts from live data are NOT directly
+> comparable to historical weighted counts** until the live pipeline re-fetches
+> scores after a maturation window (e.g. re-poll each post 24–48h later).
+> Raw `mention_count` doesn't suffer from this — one post = 1 either way —
+> which is another reason to validate the raw-count signal first before
+> leaning on the weighted one.
+
+---
+
+## Potential errors & how to mitigate them
+
+Known ways this signal can lie, and what to do about each:
+
+| Risk | What goes wrong | Mitigation |
+|---|---|---|
+| **Bot posting / spam** | Pump groups flood a sub with low-effort posts mentioning a ticker; raw `mention_count` spikes with no real crowd behind it | Per-post dedupe is already on (a post counts once). Add: minimum-score filter (e.g. drop `score < 2`), cap posts-per-author-per-day (a user posting $XYZ 30×/day counts once), and cross-check that a spike appears in **more than one** subreddit before trusting it |
+| **Upvote maturity bias** | Archived posts carry final/mature scores; live posts have near-zero scores at fetch time — so `weighted_count` systematically favors old data | Don't just delete the weighting — you'd lose the viral-vs-noise distinction. Better options, in order: (a) validate using **raw `mention_count` only** first (it's immune); (b) for live data, re-poll each post's score after a fixed maturation window (24–48h) so old and new are measured at the same age; (c) if re-polling isn't possible, compare each day's weighted count to its own trailing baseline (z-scores) instead of across eras; (d) soften the `score²` power law to `score` or `log(1+score)` so maturity gaps distort less |
+| **Selection bias** | Mega-caps (NVDA, TSLA) are always heavily mentioned, so their "spikes" are less meaningful | The inflection detector already normalizes per ticker (`mean + K×std` of its *own* history). Also prefer *velocity* (change) over *level* (absolute counts) when comparing tickers |
+| **False-positive tickers** | Bare words like ALL, NOW, IT are valid symbols → phantom mentions | Stop lists + universe validation are already in `extract_tickers.py`; when precision matters more than volume, run with `CASHTAGS_ONLY = True` ($TICKER only) |
+| **Deleted/removed posts** | Archive keeps posts later deleted by mods; live API won't return them → historical counts slightly higher | Small effect; note it when back-testing. Optionally drop posts with `selftext == "[removed]"` for consistency |
+| **Direction blindness** | A mention spike says *attention*, not *bullish vs bearish* — GME puts and calls look identical | That's Stage 2 (sentiment). Until then, treat spikes as "look here", not "buy signal" |
+| **Duplicate/crosspost inflation** | The same content posted across subs counts once per sub | Acceptable if you *want* breadth-of-attention; to remove it, dedupe on identical `title` within a day |
+
+---
+
+## Next steps to complete Stage 1
+
+Goal of Stage 1 (from the proposal): show whether **Reddit mention spikes lead
+ETF price moves**, measure the **time lag**, and pin down the **inflection
+point**. The four Bloomberg ETFs in the proposal line up with themes this repo
+already knows:
+
+| Proposal ETF | Theme in `src/themes.py` |
+|--------------|--------------------------|
+| GLD  (gold)            | `gold_metals` |
+| MAGS (mega-cap tech)   | `ai_megacap` |
+| BTC  (crypto)          | `crypto` |
+| SMH  (semiconductors)  | `semiconductors` |
+
+Work through these in order:
+
+- [x] **1. Get the data in.** DONE 2026-07-02: the 15 `.zst` dumps are in
+      `data/raw/` and `data/processed/posts.parquet` (7.95M posts, all dates)
+      is built. To redo with different filters, edit and run
+      `python3 data_ingestion/scripts/prep_posts.py`.
+
+- [ ] **2. Produce the mention signals.** Run `notebooks/02_mentions_over_time.ipynb`
+      (daily ticker counts, raw **and** upvote-weighted) and
+      `notebooks/04_theme_mentions.ipynb` for the four themes above. This gives you
+      the daily series you'll line up against prices.
+
+- [ ] **3. Add price data (the missing input).** Export daily price history from
+      **Bloomberg** for GLD, MAGS, BTC and SMH and save them as CSVs in a new
+      `data/prices/` folder, one file per ETF, columns `date,close`. This is the
+      only Stage-1 input the repo doesn't generate itself.
+
+- [ ] **4. Measure lead/lag (the core validation).** Build a small step that, for
+      each theme, lines up daily mentions with that ETF's daily return and
+      computes the correlation at several lags (e.g. mentions shifted -10..+10
+      days). The lag with the strongest correlation tells you **if** mentions lead
+      price and **by how many days**. _(I can build this as `src/price_lag.py` +
+      a `notebooks/06_mention_price_lag.ipynb` — just ask.)_
+
+- [ ] **5. Define the inflection rule.** Using `notebooks/03_first_derivative.ipynb`,
+      settle on the `K` threshold (std-devs above normal) that best lines up with
+      the price moves you found in step 4. Write down which `K` you picked and why.
+
+- [ ] **6. Write up findings.** For each theme: does a mention spike lead the ETF?
+      what lag? is raw mention count a strong enough signal, or too noisy (which
+      would trigger **Stage 2 — sentiment**)? Note the proposal's three concerns:
+      bot-posting noise, short-vs-long direction, and selection bias (e.g. NVDA
+      already being over-mentioned).
+
+- [ ] **7. Live-API check (only if step 4 is promising).** Validate on recent data
+      via the Reddit API (PRAW) once the paid tier is approved, to confirm the
+      back-test holds out-of-sample. See "Historical vs. live data" above for the
+      ingestion pattern and the score-maturity caveat.
+
+Steps 1-3 are setup/data; **step 4 is the actual Stage-1 result** that decides
+whether you proceed straight to live testing or fall back to Stage 2 sentiment.
