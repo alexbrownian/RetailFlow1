@@ -58,10 +58,10 @@ def build_daily_series(df, ticker, value_col="mention_count"):
     For one ticker, return a table with EVERY calendar day in the range,
     filling days with no mentions as 0.
 
-    value_col : which column to use as the signal -
-                "mention_count"  = raw number of mentions
-                "weighted_count" = mentions weighted by upvotes
-    (If the requested column is missing, we fall back to mention_count.)
+    value_col : which column to use as the signal (normally "mention_count",
+                the raw number of mentions; any other name falls back to
+                mention_count if missing - score-based weighting was removed
+                project-wide, see design_decisions.xlsx #30).
 
     Why fill the gaps? If a ticker is missing on a quiet day, the derivative
     would skip over it and look wrong. A continuous daily line is correct.

@@ -42,9 +42,10 @@ Datasets and their quirks:
       those back to one row (our extractor re-finds all tickers from the
       text anyway).
 
-SCORE CAVEAT: only the mjw dataset carries likes, and Twitter likes are not
-Reddit upvotes. The upvote-weighted signal therefore stays a Reddit-centric
-metric; cross-source comparisons use RAW mention counts (one post = 1).
+SCORE CAVEAT: only the mjw dataset carries likes; the score column is kept
+in the schema for spam filtering only. ALL counting uses raw mention counts
+(one post = 1) - score-based weighting was removed project-wide (see
+design_decisions.xlsx #30).
 """
 
 from __future__ import annotations

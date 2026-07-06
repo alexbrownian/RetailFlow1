@@ -15,8 +15,13 @@ SIGNAL 1 - KEYWORD themes (direct mentions)
   posts/sec vs ~600/sec for the old per-theme regex scan). Single-word
   keywords must match a whole token; multi-word phrases are matched as
   substrings of the lowercased text. Each post counts AT MOST ONCE per
-  theme (same per-post dedupe rule as the ticker pipeline), and
-  keyword_weighted sums score**2 like build_mentions.py does.
+  theme (same per-post dedupe rule as the ticker pipeline).
+
+  NOTE (2026-07-06): the score**2 upvote weighting was REMOVED everywhere -
+  archived scores are FINAL scores, so weighting day-t mentions by them
+  leaks future information into any backtest (see build_mentions.py and
+  design_decisions.xlsx #30). The *_weighted columns are still emitted for
+  notebook compatibility but are ALWAYS 0 now.
 
   IMPORTANT: keyword lists contain WORDS AND PHRASES ONLY - no bare ticker
   symbols. Matching is case-insensitive, so a symbol like C (Citigroup) or
@@ -289,34 +294,30 @@ def build_daily_theme_counts(posts_df: pd.DataFrame) -> pd.DataFrame:
                          (each post counts once per theme, however many
                          keywords it contains - same dedupe rule as the
                          ticker pipeline)
-      keyword_weighted = sum of score**2 over those posts (same power-law
-                         weighting as build_mentions.py, so the keyword and
-                         inferred signals are directly comparable)
+      keyword_weighted = ALWAYS 0 - the score**2 weighting was removed
+                         because archived scores leak future information
+                         (kept as a column only so older notebooks run)
     """
-    have_score = "score" in posts_df.columns
-
     titles = posts_df["title"].fillna("").astype(str)
     bodies = posts_df["selftext"].fillna("").astype(str)
     dates = posts_df["date"].astype(str)
-    scores = posts_df["score"].fillna(0).astype(int) if have_score else [0] * len(posts_df)
 
     rows = []
-    for date, title, body, score in zip(dates, titles, bodies, scores):
+    for date, title, body in zip(dates, titles, bodies):
         found = themes_in_text(title + " " + body)
-        if found:
-            weight = score * score
-            for theme in found:
-                rows.append((date, theme, weight))
+        for theme in found:
+            rows.append((date, theme))
 
     if not rows:
         return pd.DataFrame(columns=["date", "theme", "keyword_count", "keyword_weighted"])
 
-    long_df = pd.DataFrame(rows, columns=["date", "theme", "weight"])
+    long_df = pd.DataFrame(rows, columns=["date", "theme"])
     daily = (
         long_df.groupby(["date", "theme"])
-        .agg(keyword_count=("theme", "size"), keyword_weighted=("weight", "sum"))
+        .agg(keyword_count=("theme", "size"))
         .reset_index()
     )
+    daily["keyword_weighted"] = 0   # deprecated, see docstring
     return daily
 
 
@@ -413,31 +414,30 @@ def build_inferred_theme_counts(daily_ticker_counts: pd.DataFrame,
     Signal 2: roll the daily ticker counts (notebook 02's output) up into
     themes. NVDA mentions count toward semiconductors, ai AND ai_megacap.
 
-    daily_ticker_counts must have columns: date, ticker, mention_count
-    (weighted_count optional - filled with 0 if absent).
+    daily_ticker_counts must have columns: date, ticker, mention_count.
 
     Returns DataFrame(date, theme, inferred_count, inferred_weighted).
+    inferred_weighted is ALWAYS 0 (score**2 weighting removed - archived
+    scores leak future information; column kept for notebook compatibility).
     """
     df = daily_ticker_counts
-    if "weighted_count" not in df.columns:
-        df = df.assign(weighted_count=0)
 
     lookup = build_ticker_to_themes(theme_tickers)
     rows = []
-    for date, ticker, count, weighted in zip(
-        df["date"], df["ticker"], df["mention_count"], df["weighted_count"]
-    ):
+    for date, ticker, count in zip(df["date"], df["ticker"], df["mention_count"]):
         for theme in lookup.get(ticker, ()):
-            rows.append((date, theme, count, weighted))
+            rows.append((date, theme, count))
 
     if not rows:
         return pd.DataFrame(columns=["date", "theme", "inferred_count", "inferred_weighted"])
 
-    long_df = pd.DataFrame(rows, columns=["date", "theme", "inferred_count", "inferred_weighted"])
-    return (
-        long_df.groupby(["date", "theme"], as_index=False)[["inferred_count", "inferred_weighted"]]
+    long_df = pd.DataFrame(rows, columns=["date", "theme", "inferred_count"])
+    out = (
+        long_df.groupby(["date", "theme"], as_index=False)[["inferred_count"]]
         .sum()
     )
+    out["inferred_weighted"] = 0   # deprecated, see docstring
+    return out
 
 
 def combine_theme_signals(keyword_df: pd.DataFrame,

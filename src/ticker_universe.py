@@ -21,6 +21,34 @@ OTHER_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
 
 _SYMBOL_OK = re.compile(r"^[A-Z]{1,5}$")
 
+# ---------------------------------------------------------------------------
+# SURVIVORSHIP FIX: the Nasdaq Trader files list TODAY'S symbols, so tickers
+# that were delisted (bankruptcy, buyout, deregistration) vanish from the
+# universe - and their historical mentions silently stop counting. That
+# flatters any backtest: the casualties are exactly the names retail piled
+# into before they died. This hand-curated supplement re-adds known dead
+# retail favourites so their history counts again. Extend it whenever a
+# name you KNOW was loud on Reddit fails to appear in notebook 02.
+# Proper long-term fix: a point-in-time universe (archived nasdaqlisted.txt
+# snapshots or a Bloomberg/CRSP export) - see README live-data checklist.
+# ---------------------------------------------------------------------------
+DELISTED_TICKERS: frozenset[str] = frozenset({
+    "BBBY",  # Bed Bath & Beyond - bankrupt 2023, THE meme casualty
+    "WISH",  # ContextLogic - delisted 2024
+    "EXPR",  # Express - bankrupt 2024
+    "NAKD",  # Naked Brand - merged into CENN 2021
+    "SPRT",  # Support.com - merged into GREE 2021 (huge squeeze)
+    "ATER",  # Aterian - squeeze-era favourite, reverse-split casualty
+    "MULN",  # Mullen Automotive - reverse splits into oblivion
+    "RDBX",  # Redbox - 2022 squeeze, acquired
+    "CTRM",  # Castor Maritime - 2021 penny favourite
+    "GNUS",  # Genius Brands - renamed 2023
+    "CLVS",  # Clovis Oncology - bankrupt 2022
+    "SDC",   # SmileDirectClub - bankrupt 2023
+    "APRN",  # Blue Apron - acquired 2023
+    "FSR",   # Fisker - bankrupt 2024
+})
+
 
 def _fetch_text(url: str, timeout: int = 120) -> str:
     r = requests.get(url, timeout=timeout)
@@ -103,11 +131,13 @@ def load_us_ticker_universe(
 
     nasdaq = _parse_nasdaq_listed((cache_dir / "nasdaqlisted.txt").read_text(encoding="utf-8"))
     other = _parse_other_listed((cache_dir / "otherlisted.txt").read_text(encoding="utf-8"))
-    merged = nasdaq | other
+    merged = nasdaq | other | DELISTED_TICKERS   # survivorship supplement
     logger.info(
-        "Ticker universe: %s unique symbols (nasdaqlisted %s, otherlisted %s)",
+        "Ticker universe: %s unique symbols (nasdaqlisted %s, otherlisted %s, "
+        "delisted supplement %s)",
         len(merged),
         len(nasdaq),
         len(other),
+        len(DELISTED_TICKERS),
     )
     return merged

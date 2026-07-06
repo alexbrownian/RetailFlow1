@@ -63,8 +63,12 @@ RetailFlow1/
 │   ├── 05_theme_first_derivative.ipynb
 │   ├── 06_ticker_sentiment.ipynb    # VADER+WSB lexicon, per-ticker long/short lean
 │   ├── 07_theme_sentiment.ipynb     # JPM-style theme sentiment chart + monitor
-│   └── 08_retail_conviction.ipynb   # mentions x sentiment: conviction z, heatmaps,
-│                                    #   divergence flags, snail trails
+│   ├── 08_retail_conviction.ipynb   # mentions x sentiment: conviction z, heatmaps,
+│   │                                #   divergence flags, snail trails
+│   └── 09_trading_signals.ipynb     # WHAT the model would BUY, when, with what
+│                                    #   conviction (0-5) - live-parity trailing
+│                                    #   baselines; becomes the daily run when
+│                                    #   live ingestion lands
 ├── dashboard/
 │   └── app.py               # Streamlit dashboard over the derived parquets:
 │                            #   streamlit run dashboard/app.py  (timeframe picker,
@@ -136,9 +140,9 @@ Reddit's base36 ids).
 After the merge every row carries a **`source` column** (`'reddit'` or
 `'x'`); X rows also get `subreddit = 'x_twitter'` so subreddit filters and
 the parquet's block layout keep working. Tweet text goes into `title`.
-**Only the mjw dataset has like counts** (and Twitter likes are not Reddit
-upvotes), so the upvote-weighted signal remains a Reddit-centric metric —
-cross-source comparisons use RAW mention counts. Notebook 02's
+The `score` field is populated only where the source provides it (Reddit,
+plus the mjw dataset's likes) — all counting uses RAW mention counts
+everywhere, so cross-source comparisons are apples to apples. Notebook 02's
 **"Reddit vs X — who moves first?"** section plots reddit / x / combined
 lines per ticker (7-day rolling, each normalised by its own peak) and
 estimates the lead/lag by cross-correlation: corr(reddit[t], x[t−k]) for
@@ -189,18 +193,15 @@ TOP_N           = 6
 CASHTAGS_ONLY   = False # True = only count $TICKER (cleaner, lower recall)
 ```
 
-Run it → two charts: **raw mentions** (one post = 1) and **upvote-weighted
-mentions** (each post weighted by score²). Saves
-`data/processed/daily_ticker_counts.parquet` with both columns
-(`mention_count`, `weighted_count`). First run downloads the Nasdaq ticker list;
-needs internet. _Weighted needs raw posts that carry a `score` field — i.e. the
-torrent dumps; the real 2021 counts file already in `data/processed/` has raw
-counts only._
+Run it → raw mention charts (one post = 1) plus rolling and z-score views.
+Saves `data/processed/daily_ticker_counts.parquet`
+(`date, ticker, mention_count`). First run downloads the Nasdaq ticker list;
+needs internet.
 
 **Notebook 03 — first derivative.** Finds take-off days.
 
 ```python
-VALUE_COLUMN = "mention_count"  # or "weighted_count" to run on upvote-weighted signal
+VALUE_COLUMN = "mention_count"
 TICKERS = []     # e.g. ["GME"];  [] = use TOP_N most mentioned
 TOP_N   = 4
 SMOOTH  = 3      # rolling-average window (bigger = calmer, slower to react)
@@ -247,19 +248,15 @@ notebooks share the cache. Upgrade path if the signal proves out: swap
 VADER for a finance-tuned transformer (FinTwitBERT) behind the same
 `score_text()` interface.
 
-## Weighting assumptions (`build_mentions.py`)
+## Counting rules
 
-These are the deliberate design choices baked into the signal. Change them if
-the back-test suggests a different calibration:
-
-| Parameter | Current value | Why |
-|-----------|--------------|-----|
-| **Per-post deduplication** | On | A post mentioning NVDA 5 times counts as **1 mention**, not 5. Prevents a single verbose post from inflating the count. |
-| **Upvote weight function** | `score²` (power law) | Squaring the upvote score means a 1,000-upvote post contributes 1,000,000 vs a 10-upvote post's 100. Viral posts dominate; low-effort posts barely register. |
-| **Comment count (`num_comments`)** | Not used yet | Available in `posts.parquet` — could be added as a second weighting signal (e.g. `score² + α·comments`) if upvote-only proves insufficient. |
-
-If `score` is missing from the raw data (some CSV exports), `weighted_count` falls
-back to 0 for all posts; `mention_count` is always valid.
+One signal only: raw `mention_count` — the number of distinct posts
+mentioning a ticker that day. Per-post deduplication is on: a post
+mentioning NVDA 5 times counts as **1 mention** (breadth of attention,
+not verbosity). There is deliberately no score-based weighting of any
+kind; the reasons live in `design_decisions.xlsx` (#30). Tests enforce
+the single-column output. The theme files carry two legacy zero-filled
+columns purely so older notebooks keep running.
 
 ## Screening word-tickers (`src/screen_tickers.py`)
 
@@ -326,7 +323,7 @@ defence in the bare-word pass is: universe validation → `STOP_TICKERS`
 ## Glossary
 
 - **Mention count** — number of distinct posts that mentioned a ticker on a given day (one post = 1, regardless of how many times the ticker appears in it).
-- **Upvote-weighted count** — sum of `score²` across all posts mentioning the ticker that day. Amplifies viral posts heavily; see weighting assumptions above.
+- **Mention count is the only counting signal** — score-based weighting was removed for good (final scores leak future information into day-t signals; design_decisions.xlsx #30).
 - **First derivative / velocity** — change in (smoothed) mentions vs. the day
   before. High positive value = attention accelerating.
 - **Inflection / take-off day** — a day whose velocity is much higher than that
@@ -366,14 +363,12 @@ unchanged.
 
 > **⚠️ Caveat — `score` and `num_comments` are snapshots, not final values.**
 > The archive dumps captured posts long after posting, so their scores are
-> *mature* (a viral post shows its full 50k upvotes). A live-fetched post
-> grabbed minutes after creation has a score near 0 — even if it later goes
-> viral. This means **upvote-weighted counts from live data are NOT directly
-> comparable to historical weighted counts** until the live pipeline re-fetches
-> scores after a maturation window (e.g. re-poll each post 24–48h later).
-> Raw `mention_count` doesn't suffer from this — one post = 1 either way —
-> which is another reason to validate the raw-count signal first before
-> leaning on the weighted one.
+> *mature* (a viral post shows its full 50k upvotes), while a live-fetched
+> post grabbed minutes after creation has a score near 0 — even if it later
+> goes viral. The stored `score` column is therefore **not comparable across
+> eras** and must never be turned into a counting signal (that decision is
+> final — see design_decisions.xlsx #30). All counting uses raw
+> `mention_count`: one post = 1 either way, immune by construction.
 
 ---
 
@@ -417,6 +412,7 @@ on live data.**
 | `STOP_TICKERS` / `BARE_PROSE_STOP` | `src/extract_tickers.py` | New caps-jargon slips past both screening signals (HODL/TLDR class) — check notebook 02's top-20 after each new era of data |
 | `ticker_classification.csv` | generated by notebook 01 | Regenerate after window changes or new ingestion; extractor loads it AT IMPORT — restart/reload kernels after regenerating |
 | Nasdaq ticker universe cache | `data/reference/*.txt` (max age 365d in notebooks) | New IPOs invisible until refresh — delete the cached .txt files to force a re-download |
+| `DELISTED_TICKERS` survivorship supplement | `src/ticker_universe.py` | Today's symbol files omit delisted names (BBBY, SPRT...), silently dropping the meme casualties from history — bias that flatters backtests. The hand-curated supplement re-adds them; extend it when a name you KNOW was loud fails to appear in notebook 02. Proper fix eventually: point-in-time universe snapshots |
 | `THEME_KEYWORDS` / `THEME_TICKERS` / `THEME_ETFS` | `src/themes.py` | New themes/ETFs by hand; every theme MUST get an ETF anchor (pytest enforces) |
 | `WSB_LEXICON` sentiment slang | `src/sentiment.py` | Slang drifts; new terms need hand-set valences, then delete the sentiment cache |
 
@@ -431,9 +427,10 @@ documented judgement calls (see `design_decisions.xlsx` for the why).
 
 ### F. Live-ingestion specific traps (from earlier sections, collected)
 
-1. **Score maturity**: live scores are ~0 at fetch; weighted counts are not
-   comparable across eras without a 24-48h re-poll (see caveat box above).
-   Validate on raw counts first — they are immune.
+1. **Score maturity**: live scores are ~0 at fetch vs mature archive scores —
+   the stored `score` column is not comparable across eras and must never
+   become a counting signal (see caveat box above). All counting is raw
+   mention counts, which are immune.
 2. **Windows file locks**: close Jupyter kernels before any parquet swap
    (`add_x_data.py` prints recovery steps if it hits a lock).
 3. **The dedup rule is a contract**: live PRAW ingestion must skip ids that
@@ -450,7 +447,7 @@ Known ways this signal can lie, and what to do about each:
 | Risk | What goes wrong | Mitigation |
 |---|---|---|
 | **Bot posting / spam** | Pump groups flood a sub with low-effort posts mentioning a ticker; raw `mention_count` spikes with no real crowd behind it | Per-post dedupe is already on (a post counts once). Add: minimum-score filter (e.g. drop `score < 2`), cap posts-per-author-per-day (a user posting $XYZ 30×/day counts once), and cross-check that a spike appears in **more than one** subreddit before trusting it |
-| **Upvote maturity bias** | Archived posts carry final/mature scores; live posts have near-zero scores at fetch time — so `weighted_count` systematically favors old data | Don't just delete the weighting — you'd lose the viral-vs-noise distinction. Better options, in order: (a) validate using **raw `mention_count` only** first (it's immune); (b) for live data, re-poll each post's score after a fixed maturation window (24–48h) so old and new are measured at the same age; (c) if re-polling isn't possible, compare each day's weighted count to its own trailing baseline (z-scores) instead of across eras; (d) soften the `score²` power law to `score` or `log(1+score)` so maturity gaps distort less |
+| **Score maturity bias** | Archived posts carry final/mature scores; live posts have near-zero scores at fetch time — the stored `score` column is not comparable across eras | Resolved by design: score-based counting was removed entirely (design_decisions.xlsx #30); all signals use raw `mention_count`, which is immune (one post = 1 the moment it exists). The `score` column stays in the schema for spam filtering only (e.g. drop `score < 2`) |
 | **Selection bias** | Mega-caps (NVDA, TSLA) are always heavily mentioned, so their "spikes" are less meaningful | The inflection detector already normalizes per ticker (`mean + K×std` of its *own* history). Also prefer *velocity* (change) over *level* (absolute counts) when comparing tickers |
 | **False-positive tickers** | Bare words like ALL, NOW, EDGE, LOAN are valid symbols → phantom mentions | Three layers in `extract_tickers.py`: universe validation, manual stop lists, and data-driven screening (`src/screen_tickers.py` — case ratio + wordfreq, see "Screening word-tickers"). When precision matters more than volume, run with `CASHTAGS_ONLY = True` ($TICKER only) |
 | **Deleted/removed posts** | Archive keeps posts later deleted by mods; live API won't return them → historical counts slightly higher | Small effect; note it when back-testing. Optionally drop posts with `selftext == "[removed]"` for consistency |
@@ -485,7 +482,7 @@ Work through these in order:
       `python3 data_ingestion/scripts/prep_posts.py`.
 
 - [ ] **2. Produce the mention signals.** Run `notebooks/02_mentions_over_time.ipynb`
-      (daily ticker counts, raw **and** upvote-weighted) and
+      (daily raw ticker counts) and
       `notebooks/04_theme_mentions.ipynb` for the four themes above. This gives you
       the daily series you'll line up against prices. Word-ticker screening
       (`data/reference/ticker_classification.csv`, generated 2026-07-03 — see

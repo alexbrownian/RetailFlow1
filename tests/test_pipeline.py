@@ -175,18 +175,33 @@ def test_cashtags_only_skips_bare_words():
     assert extract_tickers_from_text(text, UNIVERSE, cashtags_only=True) == []
 
 
-def test_build_daily_counts_dedupes_and_weights():
-    # One post mentions $GME twice -> must count as ONE mention,
-    # weighted_count must be score squared (10^2 = 100).
+def test_build_daily_counts_dedupes_and_has_no_weighted_column():
+    # One post mentions $GME twice -> must count as ONE mention.
+    # weighted_count (score**2) was REMOVED 2026-07-06: archived scores are
+    # FINAL scores, so weighting day-t mentions by them leaks the future
+    # into backtests. This test also guards against it sneaking back.
     posts = pd.DataFrame([
         {"date": "2021-01-27", "title": "$GME $GME!!", "selftext": "", "score": 10},
         {"date": "2021-01-27", "title": "boring day", "selftext": "nothing here", "score": 50},
     ])
     counts = build_daily_counts(posts, UNIVERSE, cashtags_only=True)
+    assert list(counts.columns) == ["date", "ticker", "mention_count"]
     gme = counts[(counts.ticker == "GME") & (counts.date == "2021-01-27")]
     assert len(gme) == 1
     assert int(gme.mention_count.iloc[0]) == 1
-    assert int(gme.weighted_count.iloc[0]) == 100
+
+
+def test_delisted_supplement_fixes_survivorship():
+    # Today's Nasdaq symbol files omit delisted names (BBBY etc.), which
+    # would silently drop the meme casualties from history - survivorship
+    # bias that flatters backtests. The supplement re-adds them.
+    from src.ticker_universe import DELISTED_TICKERS, _SYMBOL_OK
+    assert "BBBY" in DELISTED_TICKERS and "SPRT" in DELISTED_TICKERS
+    for sym in DELISTED_TICKERS:
+        assert _SYMBOL_OK.fullmatch(sym), f"bad symbol in supplement: {sym}"
+    # And the extractor counts them like any other universe member.
+    hits = extract_tickers_from_text("$BBBY to the moon", {"BBBY"}, cashtags_only=True)
+    assert hits == ["BBBY"]
 
 
 def test_screening_case_ratio_wins_over_wordfreq():
@@ -380,7 +395,9 @@ def test_build_daily_theme_counts_dedupes_and_weights():
     gold = counts[(counts.theme == "gold_metals") & (counts.date == "2021-01-27")]
     assert len(gold) == 1
     assert int(gold.keyword_count.iloc[0]) == 1
-    assert int(gold.keyword_weighted.iloc[0]) == 100
+    # weighted is deprecated (score**2 leak) - the column survives for
+    # notebook compatibility but must always be 0 now.
+    assert int(gold.keyword_weighted.iloc[0]) == 0
 
 
 def test_build_inferred_theme_counts_maps_tickers_to_multiple_themes():
@@ -394,7 +411,7 @@ def test_build_inferred_theme_counts_maps_tickers_to_multiple_themes():
     assert {"semiconductors", "ai", "ai_megacap"} <= themes
     row = inferred[inferred.theme == "ai"].iloc[0]
     assert int(row.inferred_count) == 7
-    assert int(row.inferred_weighted) == 49
+    assert int(row.inferred_weighted) == 0   # deprecated column, always 0 now
 
 
 def test_combine_theme_signals_outer_joins_with_zeros():
@@ -453,7 +470,7 @@ def test_real_slice_through_pipeline():
 
     # A tiny fixed universe keeps the test fast and internet-free.
     counts = build_daily_counts(posts, {"GME", "AMC", "TSLA", "SPY"}, cashtags_only=True)
-    assert list(counts.columns) == ["date", "ticker", "mention_count", "weighted_count"]
+    assert list(counts.columns) == ["date", "ticker", "mention_count"]
     assert (counts["mention_count"] > 0).all()
 
     # Daytraders definitely talked about SPY at least once in 16 years.
