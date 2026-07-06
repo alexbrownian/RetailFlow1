@@ -11,7 +11,7 @@ SIGNAL 1 - KEYWORD themes (direct mentions)
   Entry point: build_daily_theme_counts(posts_df)
   Returns: DataFrame(date, theme, keyword_count, keyword_weighted)
 
-  Matching is one tokenisation pass per post + hash lookups (fast: ~15k
+  Matching is one tokenisation pass per post + hash lookups (fast: ~12k
   posts/sec vs ~600/sec for the old per-theme regex scan). Single-word
   keywords must match a whole token; multi-word phrases are matched as
   substrings of the lowercased text. Each post counts AT MOST ONCE per
@@ -37,6 +37,14 @@ SIGNAL 2 - INFERRED themes (ticker -> theme)
 
 Combine both with combine_theme_signals() -> one row per (date, theme)
 with all four count columns, zeros where a signal is silent.
+
+TRADEABLE BY DESIGN: every theme is anchored to a liquid instrument in
+THEME_ETFS (semiconductors -> SMH, gold_metals -> GLD, europe_defense ->
+EUAD ...). If a theme's mentions spike, there is a concrete thing to
+back-test it against and, eventually, trade. Vague non-tradeable themes
+(options chatter, earnings chatter, IPO chatter) were deliberately removed;
+short_squeeze / meme_stocks stay because their proxy (GME) is tradeable
+and they are the project's home turf.
 
 CLI (signal 2 only - signal 1 is called from notebook 04 directly):
   python -m src.themes --in daily_ticker_counts.parquet --out daily_theme_counts.parquet
@@ -111,8 +119,26 @@ THEME_KEYWORDS: dict[str, list[str]] = {
         "electric vehicle", "EV", "Tesla", "Rivian",
         "Lucid", "NIO", "Xpeng", "Li Auto",
         "battery", "lithium", "lithium ion", "charging station",
-        "solar", "wind energy", "nuclear", "renewable", "clean energy",
+        "solar", "wind energy", "renewable", "clean energy",
         "Enphase", "First Solar",
+    ],
+    "uranium_nuclear": [
+        "uranium", "nuclear", "nuclear power", "nuclear energy",
+        "reactor", "reactors", "SMR", "small modular reactor",
+        "enrichment", "Cameco", "Kazatomprom", "fission",
+        "nuclear renaissance", "yellowcake",
+    ],
+    "defense_aerospace": [
+        "defense stock", "defence stock", "defense budget", "military spending",
+        "Lockheed", "Raytheon", "Northrop", "General Dynamics",
+        "Pentagon", "missile", "missiles", "artillery", "munitions",
+        "air defense", "military contract", "defense contractor",
+    ],
+    "europe_defense": [
+        "Rheinmetall", "BAE Systems", "Thales", "Saab",
+        "European defense", "European defence", "EU defense",
+        "rearmament", "rearm", "German defense",
+        "NATO spending", "NATO target", "defense procurement",
     ],
     "short_squeeze": [
         "short squeeze", "gamma squeeze", "squeeze", "short interest",
@@ -136,13 +162,12 @@ THEME_KEYWORDS: dict[str, list[str]] = {
         "weight loss drug", "GLP-1", "ozempic", "semaglutide",
         "gene therapy", "CRISPR", "antibody",
     ],
-    "macro_rates": [
+    "rates_bonds": [
         "interest rate", "federal reserve", "Fed", "FOMC",
         "rate hike", "rate cut", "inflation", "CPI", "PPI",
         "recession", "soft landing", "hard landing",
         "yield curve", "bond yield", "treasury", "10-year",
-        "GDP", "unemployment", "jobs report", "payroll",
-        "macro", "stagflation", "tightening", "pivot",
+        "stagflation", "tightening", "pivot",
     ],
     "real_estate": [
         "real estate", "REIT", "housing market", "home price",
@@ -157,13 +182,6 @@ THEME_KEYWORDS: dict[str, list[str]] = {
         "ARR", "annual recurring revenue", "churn",
         "Salesforce", "Snowflake", "Palantir",
         "Datadog", "MongoDB", "Cloudflare",
-    ],
-    "options_volatility": [
-        "options", "call option", "put option", "LEAPS",
-        "implied volatility", "IV crush", "theta", "gamma",
-        "delta", "vega", "0DTE", "zero DTE",
-        "VIX", "volatility", "earnings play", "strangle", "straddle",
-        "iron condor", "covered call", "cash secured put",
     ],
     "china_geopolitics": [
         "China", "Chinese", "tariff", "trade war", "sanctions",
@@ -184,17 +202,35 @@ THEME_KEYWORDS: dict[str, list[str]] = {
         "consumer sentiment", "discretionary", "e-commerce",
         "holiday sales", "Black Friday", "back to school",
     ],
-    "earnings": [
-        "earnings", "earnings call", "EPS", "earnings per share",
-        "beat expectations", "miss expectations", "guidance",
-        "revenue beat", "revenue miss", "forward guidance",
-        "outlook", "quarterly results", "earnings season",
-    ],
-    "ipo_spac": [
-        "IPO", "initial public offering", "SPAC", "blank check",
-        "de-SPAC", "direct listing", "lockup expiry", "lock-up",
-        "pre-IPO", "going public",
-    ],
+}
+
+# ---------------------------------------------------------------------------
+# TRADEABLE ANCHORS - the instrument each theme is judged against.
+# One liquid primary per theme (mostly ETFs). short_squeeze / meme_stocks
+# have no clean ETF; GME is the honest single-stock proxy.
+# ---------------------------------------------------------------------------
+THEME_ETFS: dict[str, str] = {
+    "semiconductors": "SMH",
+    "memory": "SMH",            # no pure memory ETF; MU dominates SMH's memory exposure
+    "ai": "AIQ",
+    "datacenters": "DTCR",
+    "ai_megacap": "MAGS",
+    "crypto": "IBIT",           # spot bitcoin ETF (BITO pre-2024 windows)
+    "gold_metals": "GLD",       # miners: GDX
+    "energy": "XLE",
+    "ev_clean_energy": "ICLN",
+    "uranium_nuclear": "URA",
+    "defense_aerospace": "ITA",
+    "europe_defense": "EUAD",
+    "short_squeeze": "GME",     # single-stock proxy, not an ETF
+    "meme_stocks": "GME",       # single-stock proxy, not an ETF
+    "biotech_pharma": "XBI",
+    "rates_bonds": "TLT",
+    "real_estate": "VNQ",
+    "cloud_saas": "IGV",
+    "china_geopolitics": "KWEB",
+    "financials": "XLF",
+    "consumer_retail": "XLY",
 }
 
 # Tokens are runs of letters/digits in the lowercased text, so "0DTE" and
@@ -298,14 +334,14 @@ THEME_TICKERS: dict[str, set[str]] = {
         "SMH", "SOXX", "SOXL",
     },
     "memory": {"MU", "WDC", "STX"},
-    "ai": {"NVDA", "AMD", "PLTR", "AI", "SMCI", "MSFT", "GOOGL", "BBAI", "SOUN"},
-    "datacenters": {"EQIX", "DLR", "SMCI", "VRT", "IRM", "ANET"},
+    "ai": {"NVDA", "AMD", "PLTR", "AI", "SMCI", "MSFT", "GOOGL", "BBAI", "SOUN", "AIQ"},
+    "datacenters": {"EQIX", "DLR", "SMCI", "VRT", "IRM", "ANET", "DTCR"},
     "ai_megacap": {
         "NVDA", "MSFT", "GOOGL", "GOOG", "META", "AAPL", "AMZN", "TSLA", "MAGS",
     },
     "crypto": {
         "COIN", "MSTR", "MARA", "RIOT", "HUT", "BITF", "CLSK",
-        "GBTC", "BITO", "ETHE", "SI",
+        "GBTC", "BITO", "ETHE", "SI", "IBIT",
     },
     "gold_metals": {
         "GLD", "SLV", "IAU", "GDX", "GDXJ", "NEM", "GOLD", "AEM",
@@ -318,8 +354,16 @@ THEME_TICKERS: dict[str, set[str]] = {
     "ev_clean_energy": {
         "TSLA", "RIVN", "LCID", "NIO", "XPEV", "LI", "PLUG", "FCEL",
         "ENPH", "FSLR", "RUN", "SEDG", "CHPT", "QS", "BLNK",
-        "ALB", "LIT", "ICLN", "TAN", "CCJ",
+        "ALB", "LIT", "ICLN", "TAN",
     },
+    "uranium_nuclear": {
+        "CCJ", "URA", "URNM", "UEC", "DNN", "LEU", "SMR", "OKLO", "NNE",
+    },
+    "defense_aerospace": {
+        "LMT", "RTX", "NOC", "GD", "LHX", "HII", "KTOS", "AVAV",
+        "ITA", "PPA", "XAR",
+    },
+    "europe_defense": {"EUAD"},
     "short_squeeze": {
         "GME", "AMC", "BBBY", "KOSS", "EXPR", "NAKD", "WISH",
         "WKHS", "SPCE", "CLOV",
@@ -333,13 +377,13 @@ THEME_TICKERS: dict[str, set[str]] = {
         "GILD", "AMGN", "REGN", "VRTX", "NVAX", "BNTX", "CRSP",
         "OCGN", "XBI", "IBB",
     },
-    "macro_rates": {"TLT", "IEF", "SHY", "TBT", "HYG", "LQD"},
+    "rates_bonds": {"TLT", "IEF", "SHY", "TBT", "HYG", "LQD"},
     "real_estate": {"SPG", "O", "VNQ", "AMT", "PLD", "EQR", "AVB"},
     "cloud_saas": {
         "CRM", "SNOW", "PLTR", "DDOG", "MDB", "NET", "ORCL", "ADBE",
         "NOW", "TEAM", "ZM", "WDAY", "OKTA", "ZS", "CRWD", "TWLO", "SHOP",
+        "IGV",
     },
-    "options_volatility": {"UVXY", "VXX", "SVXY"},
     "china_geopolitics": {
         "BABA", "JD", "PDD", "BIDU", "NIO", "XPEV", "LI",
         "FXI", "KWEB", "YINN", "DIDI", "TCEHY",
@@ -352,7 +396,6 @@ THEME_TICKERS: dict[str, set[str]] = {
         "WMT", "AMZN", "TGT", "COST", "HD", "LOW", "NKE", "SBUX",
         "MCD", "LULU", "XLY",
     },
-    "ipo_spac": {"IPO"},
 }
 
 

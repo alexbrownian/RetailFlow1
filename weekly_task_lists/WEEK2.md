@@ -179,6 +179,9 @@ scoring might rescue what volume alone can't see.
 
 The backtest deserves proper code: `src/price_lag.py` (returns, calendar
 alignment, cross-correlation, event study, permutation test — all unit
-tested) plus `notebooks/06_mention_price_lag.ipynb` reading
-`data/prices/*.csv` and the theme counts. Ask Claude to build it in the
-next session — this file is the spec.
+tested) plus `notebooks/09_mention_price_lag.ipynb` reading
+`data/prices/*.csv` and the theme counts (06/07 = sentiment, 08 = the
+mentions-x-sentiment conviction composite — test conviction_z against
+prices too). Ask Claude to build it in the next session — this file is the
+spec. Note: `THEME_ETFS` in `src/themes.py` now maps EVERY theme to its
+anchor instrument, so the backtest can cover more than the original four.

@@ -60,7 +60,15 @@ RetailFlow1/
 │   ├── 02_mentions_over_time.ipynb  # daily ticker mention counts + graphs
 │   ├── 03_first_derivative.ipynb    # take-off detection per ticker
 │   ├── 04_theme_mentions.ipynb      # keyword-based theme counts
-│   └── 05_theme_first_derivative.ipynb
+│   ├── 05_theme_first_derivative.ipynb
+│   ├── 06_ticker_sentiment.ipynb    # VADER+WSB lexicon, per-ticker long/short lean
+│   ├── 07_theme_sentiment.ipynb     # JPM-style theme sentiment chart + monitor
+│   └── 08_retail_conviction.ipynb   # mentions x sentiment: conviction z, heatmaps,
+│                                    #   divergence flags, snail trails
+├── dashboard/
+│   └── app.py               # Streamlit dashboard over the derived parquets:
+│                            #   streamlit run dashboard/app.py  (timeframe picker,
+│                            #   top mentions/velocity, sentiment, momentum map)
 ├── src/
 │   ├── clean_data.py        # raw Reddit record -> tidy standard row (normalise)
 │   ├── x_data.py            # raw X (Twitter) rows -> the same standard shape
@@ -69,7 +77,8 @@ RetailFlow1/
 │   ├── screen_tickers.py    # word-ticker screening (case ratio + wordfreq)
 │   ├── build_mentions.py    # posts -> daily mention counts (per ticker)
 │   ├── inflection.py        # first-derivative take-off detector
-│   └── themes.py            # keyword themes (semis, crypto, ...)
+│   ├── sentiment.py         # VADER + WSB lexicon; daily ticker/theme sentiment
+│   └── themes.py            # TRADEABLE themes (each anchored to an ETF in THEME_ETFS)
 └── tests/
     └── test_pipeline.py     # pytest checks for dataset + pipeline + notebooks
 ```
@@ -214,6 +223,30 @@ python3 -m src.themes --in data/processed/daily_ticker_counts.parquet \
 
 Then point notebook 03's `DAILY_COUNTS_PATH` at the theme file.
 
+**Themes are tradeable by design.** Every theme in `src/themes.py` is
+anchored to a liquid instrument in `THEME_ETFS` (semiconductors → SMH,
+gold_metals → GLD, uranium_nuclear → URA, europe_defense → EUAD, ...), so
+a spike always points at something you can back-test. Vague, untradeable
+themes (options chatter, earnings chatter, IPO chatter) were removed;
+`short_squeeze`/`meme_stocks` keep GME as an honest single-stock proxy.
+
+## Sentiment (Stage 2 lite — notebooks 06 & 07)
+
+`src/sentiment.py` scores every post with **VADER plus a WSB lexicon**
+(moon/calls/tendies bullish; puts/bags/rug/rekt bearish) and rolls it up
+per ticker (06) and per theme (07) per day. The headline metric is
+**net_bullish ∈ [-1, +1]** = share of bullish posts minus share of bearish
+posts — robust to one extreme post, reads as "how one-sided is the crowd".
+Noise controls: days under `MIN_POSTS` are masked, charts use 7-day rolling
+means, and levels are less trustworthy than changes vs a name's own
+baseline (sarcasm defeats lexicons). Theme lines aggregate hundreds of
+posts/day and are much more stable than single tickers — which is why the
+JPM chart this mimics is sector-level. Scoring runs once (~20–40 min for a
+1-year slice) and is cached to `posts_slice_sentiment.parquet`; both
+notebooks share the cache. Upgrade path if the signal proves out: swap
+VADER for a finance-tuned transformer (FinTwitBERT) behind the same
+`score_text()` interface.
+
 ## Weighting assumptions (`build_mentions.py`)
 
 These are the deliberate design choices baked into the signal. Change them if
@@ -344,6 +377,72 @@ unchanged.
 
 ---
 
+## Manual settings & fallbacks — the live-data checklist
+
+Everything in this table was set BY HAND for the historical back-test.
+Each one is fine today and each one can silently produce weird results
+once live ingestion starts. **Walk this list before and after switching
+on live data.**
+
+### A. Manually set time windows
+
+| Setting | Where | Current | What goes wrong live |
+|---|---|---|---|
+| TIME WINDOW (`START_DATE`/`END_DATE`) | notebook 01 (single source of truth for the whole chain) | fixed historical window | New live posts silently EXCLUDED until you extend the window and re-run 01 → the chain looks "frozen in time" while data keeps arriving |
+| Date-range assertion | `tests/test_pipeline.py` (`dates.max() <= "2026-01-01"`) | pinned | **Will start failing the day live data crosses 2026-01-01.** Bump deliberately — it exists to catch garbage timestamps, so raise it, don't delete it |
+| X coverage map | the three static HF dumps | 2015→mid-2020 + Nov 2023→(snapshot end); **gap 2021-2023** | The X dumps are frozen snapshots: live Reddit will keep growing while X stops at its snapshot date → Reddit-vs-X comparisons beyond that date are meaningless, not "X went quiet" |
+| Rolling-z warm-up | notebook 02 (`Z_MIN_DAYS`=28) | 28 days | First month after ANY window start (incl. live go-live date) has NO z-scores — not missing data, just warm-up |
+| MAGS inception | `data/prices/MAGS.csv` | Apr 2023 | Backtests on earlier windows must exclude MAGS |
+
+### B. Sampled / estimated outputs (seeded fallbacks)
+
+| Setting | Where | Current | What goes wrong live |
+|---|---|---|---|
+| `MAX_SCORE_POSTS` sentiment cap | notebooks 06/07 | 500,000 posts, seed 0 | Post-volume panels show SCORED posts (proportional, not absolute); sentiment shares are ±1-2pt estimates. Set `None` for exact runs. Keep 06/07 identical so they share one cache |
+| Sentiment cache validity | 06/07 (row-count match) | — | After ANY new ingestion, delete `posts_slice_sentiment.parquet` (or re-run 01 so the row count changes) — a stale cache scores yesterday's world |
+| `SCREEN_SAMPLE_SIZE` word-ticker screening | notebook 01 | 300,000 posts, seed 0 | Case ratios are era-dependent: after live data (or a window change) re-run the screening section so `ticker_classification.csv` reflects current language |
+
+### C. Pinned test expectations (update on purpose, never casually)
+
+| Setting | Where | Current | What goes wrong live |
+|---|---|---|---|
+| `EXPECTED_TOTAL_ROWS` (reddit) | tests | 7,954,297 | Any live append changes it → tests fail LOUDLY (by design). Update the pin with each deliberate ingestion, record the date |
+| `EXPECTED_X_ROWS` | tests | pin after each merge | Same — the merge script prints the number to pin |
+| Duplicate ceiling | tests (≤ 5) | 5 known rows | Live dedup must keep "first seen wins"; a rising count means the live pipeline is re-ingesting known ids |
+
+### D. Manually curated lists (need periodic refresh)
+
+| List | Where | Refresh trigger |
+|---|---|---|
+| `STOP_TICKERS` / `BARE_PROSE_STOP` | `src/extract_tickers.py` | New caps-jargon slips past both screening signals (HODL/TLDR class) — check notebook 02's top-20 after each new era of data |
+| `ticker_classification.csv` | generated by notebook 01 | Regenerate after window changes or new ingestion; extractor loads it AT IMPORT — restart/reload kernels after regenerating |
+| Nasdaq ticker universe cache | `data/reference/*.txt` (max age 365d in notebooks) | New IPOs invisible until refresh — delete the cached .txt files to force a re-download |
+| `THEME_KEYWORDS` / `THEME_TICKERS` / `THEME_ETFS` | `src/themes.py` | New themes/ETFs by hand; every theme MUST get an ETF anchor (pytest enforces) |
+| `WSB_LEXICON` sentiment slang | `src/sentiment.py` | Slang drifts; new terms need hand-set valences, then delete the sentiment cache |
+
+### E. Thresholds set by judgement, awaiting calibration
+
+`K=2.0` (take-off, calibrate vs prices in Stage 1 step 5), `SMOOTH=3`,
+`EWMA_SPAN=14`, `K_SMOOTH=2.5`, `PEAK_PROMINENCE=0.75`, `MIN_TOTAL=300`,
+screening thresholds (`caps_share<0.5`, `MIN_SIGHTINGS=30`, `zipf>=3.5`),
+sentiment floors (`MIN_POSTS` 5 ticker / 20 theme, `ROLL=7`,
+bull/bear cutoffs ±0.05). None are data-derived guarantees — all are
+documented judgement calls (see `design_decisions.xlsx` for the why).
+
+### F. Live-ingestion specific traps (from earlier sections, collected)
+
+1. **Score maturity**: live scores are ~0 at fetch; weighted counts are not
+   comparable across eras without a 24-48h re-poll (see caveat box above).
+   Validate on raw counts first — they are immune.
+2. **Windows file locks**: close Jupyter kernels before any parquet swap
+   (`add_x_data.py` prints recovery steps if it hits a lock).
+3. **The dedup rule is a contract**: live PRAW ingestion must skip ids that
+   already exist ("first seen wins"), or duplicate counting corrupts every
+   downstream signal.
+4. **`add_x_data.py` rebuilds the X block from the raw dumps on every run** —
+   a future live X source must be added as a registry entry with its own
+   raw file, not by editing the parquet.
+
 ## Potential errors & how to mitigate them
 
 Known ways this signal can lie, and what to do about each:
@@ -364,7 +463,7 @@ Known ways this signal can lie, and what to do about each:
 
 > **Week 2 instructions:** the step-by-step playbook for everything below —
 > including exactly HOW to run the price backtest — is in
-> **[weekly task lists/WEEK2.md](<weekly task lists/WEEK2.md>)**.
+> **[weekly_task_lists/WEEK2.md](weekly_task_lists/WEEK2.md)**.
 
 Goal of Stage 1 (from the proposal): show whether **Reddit mention spikes lead
 ETF price moves**, measure the **time lag**, and pin down the **inflection

@@ -317,6 +317,35 @@ def test_compute_inflection_flags_a_spike():
     assert result["is_inflection"].iloc[21:].any(), "the spike was not detected"
 
 
+def test_every_theme_has_a_tradeable_anchor():
+    # Tradeable-by-design: each theme must map to an instrument in
+    # THEME_ETFS, so a mention/sentiment spike always points at something
+    # you can back-test and (eventually) trade.
+    from src.themes import THEME_ETFS
+    for theme in THEME_KEYWORDS:
+        assert theme in THEME_ETFS and THEME_ETFS[theme], f"theme '{theme}' has no ETF anchor"
+
+
+def test_sentiment_lexicon_and_aggregation():
+    from src.sentiment import score_text, add_sentiment, build_daily_ticker_sentiment
+    # WSB lexicon: slang must move the score the right way.
+    assert score_text("GME to the moon, diamond hands, buying calls") > 0.3
+    assert score_text("this is a rug, bagholders getting rekt") < -0.3
+    assert abs(score_text("the quarterly report was published on Tuesday")) < 0.3
+
+    posts = pd.DataFrame([
+        {"date": "2021-01-27", "title": "$GME to the moon", "selftext": "", "score": 10},
+        {"date": "2021-01-27", "title": "$GME calls printing tendies", "selftext": "", "score": 5},
+        {"date": "2021-01-27", "title": "$GME is a scam, bagholders", "selftext": "", "score": 2},
+    ])
+    daily = build_daily_ticker_sentiment(add_sentiment(posts), {"GME"})
+    row = daily.iloc[0]
+    # 2 bullish + 1 bearish of 3 posts -> net_bullish exactly +1/3.
+    assert row["n_posts"] == 3
+    assert abs(row["net_bullish"] - 1 / 3) < 1e-9
+    assert -1 <= row["avg_sentiment"] <= 1
+
+
 def test_theme_keywords_contain_no_bare_ticker_symbols():
     # Keyword matching is case-insensitive, so a bare symbol like C or O
     # would match every ordinary "c"/"o" in prose. Ticker exposure belongs

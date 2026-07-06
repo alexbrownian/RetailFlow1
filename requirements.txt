@@ -7,3 +7,6 @@ jupyter
 wordfreq
 huggingface_hub
 fsspec
+vaderSentiment
+joblib
+streamlit
