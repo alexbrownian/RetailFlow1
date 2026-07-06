@@ -1,12 +1,18 @@
-# big data - never commit
-data/raw/*
+# ---- data: NOTHING under data/ gets committed ----
+# (raw dumps, the parquet dataset, derived counts, reference caches -
+#  all of it is regenerable via the scripts/notebooks)
+data/
+# keep only the documentation/placeholder files so a fresh clone
+# still shows the expected folder structure:
+!data/README.md
+!data/processed/README.md
 !data/raw/PUT_DATA_HERE.txt
-data/processed/posts*.parquet
-*.bak.parquet
 
 # junk / regenerable
 __pycache__/
 .pytest_cache/
 .DS_Store
 .venv/
+.ipynb_checkpoints/
 *.bak
+*.bak.parquet
