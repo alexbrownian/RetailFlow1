@@ -62,6 +62,10 @@ sys.path.insert(0, PROJECT_ROOT)
 from src.clean_data import find_input_files, read_json_lines, normalise, keep_this_post, OUTPUT_COLUMNS
 
 # A fixed schema so every batch is written with identical column types.
+# 'source' tags where each row came from ('reddit' here). X (Twitter) data
+# is NOT handled by this script: it lives in data/raw/X Data/ (a subfolder,
+# which find_input_files deliberately does not recurse into) and is merged
+# afterwards by add_x_data.py. After any rebuild here, re-run add_x_data.py.
 SCHEMA = pa.schema([
     ("id", pa.string()),
     ("date", pa.string()),
@@ -71,6 +75,7 @@ SCHEMA = pa.schema([
     ("title", pa.string()),
     ("selftext", pa.string()),
     ("num_comments", pa.int64()),
+    ("source", pa.string()),
 ])
 
 

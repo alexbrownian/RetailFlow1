@@ -48,7 +48,9 @@ RetailFlow1/
 │   ├── README.md            # how to (re-)download dumps + rebuild the dataset
 │   ├── finance_subreddits.txt
 │   └── scripts/
-│       ├── prep_posts.py        # raw dumps -> posts.parquet (filters + dedup)
+│       ├── prep_posts.py        # raw Reddit dumps -> posts.parquet (filters + dedup)
+│       ├── fetch_x_data.py      # download X (Twitter) data -> data/raw/X Data/*.zst
+│       ├── add_x_data.py        # merge X data into posts.parquet (source column)
 │       ├── check_notebooks.py   # validate / auto-fix broken .ipynb files
 │       ├── peek.py              # print first records of a .zst (debug)
 │       ├── zst_to_csv.py        # dump one .zst to CSV for Excel (debug)
@@ -60,7 +62,8 @@ RetailFlow1/
 │   ├── 04_theme_mentions.ipynb      # keyword-based theme counts
 │   └── 05_theme_first_derivative.ipynb
 ├── src/
-│   ├── clean_data.py        # raw record -> tidy 8-column row (normalise)
+│   ├── clean_data.py        # raw Reddit record -> tidy standard row (normalise)
+│   ├── x_data.py            # raw X (Twitter) rows -> the same standard shape
 │   ├── ticker_universe.py   # downloads the official list of valid US tickers
 │   ├── extract_tickers.py   # finds $TICKER / TICKER in text (precise rules)
 │   ├── screen_tickers.py    # word-ticker screening (case ratio + wordfreq)
@@ -94,6 +97,48 @@ Drop any of these into **`data/raw/`** (a folder can hold many files):
 Then run `python3 data_ingestion/scripts/prep_posts.py` once — it streams,
 cleans, dedupes and merges everything into `data/processed/posts.parquet`.
 The notebooks never touch the raw files.
+
+### X (Twitter) data — the second source
+
+Besides Reddit, the dataset carries X posts from **three** HuggingFace
+datasets, all registered in `src/x_data.py` (`DATASETS`):
+
+| registry key | HF dataset | rows | period | engagement |
+|---|---|---|---|---|
+| `financial_tweets` | StephanAkkerman/financial-tweets | ~315k | Nov 2023+ | none (score 0) |
+| `stock_market_tweets_data` | StephanAkkerman/stock-market-tweets-data | ~924k | Apr–Jul 2020 | none (score 0) |
+| `stock_market_tweets` | mjw/stock_market_tweets | millions | 2015–2020 | likes → score, comments → num_comments |
+
+Two scripts, in order (safe to re-run any time):
+
+```bash
+python data_ingestion/scripts/fetch_x_data.py  # downloads each -> data/raw/X Data/<key>.csv.zst (raw, immutable; existing files skipped)
+python data_ingestion/scripts/add_x_data.py    # REBUILDS the whole X block of posts.parquet from all raw files
+```
+
+`add_x_data.py` is **idempotent**: every run keeps the Reddit rows and
+rebuilds all X rows from whatever raw files exist — so adding a fourth
+dataset later is one normaliser + one registry line in `src/x_data.py`,
+then re-run both scripts. No new pipeline files, no duplicated tweets
+(dedup on id across datasets, "first seen wins"; real tweet ids are
+prefixed `x_`, row-number ids `x_smt_`, so nothing can collide with
+Reddit's base36 ids).
+
+After the merge every row carries a **`source` column** (`'reddit'` or
+`'x'`); X rows also get `subreddit = 'x_twitter'` so subreddit filters and
+the parquet's block layout keep working. Tweet text goes into `title`.
+**Only the mjw dataset has like counts** (and Twitter likes are not Reddit
+upvotes), so the upvote-weighted signal remains a Reddit-centric metric —
+cross-source comparisons use RAW mention counts. Notebook 02's
+**"Reddit vs X — who moves first?"** section plots reddit / x / combined
+lines per ticker (7-day rolling, each normalised by its own peak) and
+estimates the lead/lag by cross-correlation: corr(reddit[t], x[t−k]) for
+k = −14..+14; the best k > 0 means X leads Reddit by k days. All
+derivative / z-score analytics (and notebooks 03/05) run on the **combined**
+signal. With all three datasets the X coverage is 2015–2020 plus Nov 2023+
+(a gap in 2021–2023) — pick comparison windows accordingly. After merging,
+pin `EXPECTED_X_ROWS` in `tests/test_pipeline.py` to the exact count
+`add_x_data.py` prints.
 
 ## How to run
 
@@ -280,9 +325,10 @@ come from the Reddit API (PRAW) as JSON. Two sensible patterns for appending:
    daily/monthly files like `posts/2026-07.parquet`; pyarrow/pandas read the
    whole folder as one dataset, and nothing ever rewrites the 1.1 GB file.
 
-Either way, everything downstream only cares about the 8-column schema
-(`id, date, author, score, subreddit, title, selftext, num_comments`). As long
-as live data is normalised to that shape, notebooks 02–05 and the tests work
+Either way, everything downstream only cares about the standard schema
+(`id, date, author, score, subreddit, title, selftext, num_comments, source`).
+As long as live data is normalised to that shape (with `source` saying where
+it came from — `'reddit'`, `'x'`, ...), notebooks 02–05 and the tests work
 unchanged.
 
 > **⚠️ Caveat — `score` and `num_comments` are snapshots, not final values.**
@@ -315,6 +361,10 @@ Known ways this signal can lie, and what to do about each:
 ---
 
 ## Next steps to complete Stage 1
+
+> **Week 2 instructions:** the step-by-step playbook for everything below —
+> including exactly HOW to run the price backtest — is in
+> **[weekly task lists/WEEK2.md](<weekly task lists/WEEK2.md>)**.
 
 Goal of Stage 1 (from the proposal): show whether **Reddit mention spikes lead
 ETF price moves**, measure the **time lag**, and pin down the **inflection

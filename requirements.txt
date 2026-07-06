@@ -5,3 +5,5 @@ zstandard
 requests
 jupyter
 wordfreq
+huggingface_hub
+fsspec

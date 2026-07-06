@@ -42,14 +42,24 @@ from src.themes import (
     combine_theme_signals,
     themes_in_text,
 )
+from src.x_data import normalise_tweets, normalise_smt, normalise_mjw
 
 POSTS_PATH = PROJECT_ROOT / "data" / "processed" / "posts.parquet"
 
 EXPECTED_COLUMNS = ["id", "date", "author", "score", "subreddit",
                     "title", "selftext", "num_comments"]
 
-# What the 2026-07-02 ingestion produced (see data/README.md).
-EXPECTED_TOTAL_ROWS = 7_954_297
+# True once add_x_data.py has merged the X (Twitter) rows (or prep_posts.py
+# has rebuilt with the 9-column schema). The dataset tests below adapt.
+HAS_SOURCE = "source" in pq.ParquetFile(POSTS_PATH).schema_arrow.names
+
+# What the 2026-07-02 Reddit ingestion produced (see data/README.md).
+EXPECTED_TOTAL_ROWS = 7_954_297   # reddit rows - pinned forever
+# Pin this to the exact number add_x_data.py prints after each merge.
+# It depends on how many of the registered datasets were fetched (three
+# registered: ~315k + ~924k + several million rows, minus cross-dataset
+# id dedup), so no fixed band is asserted until you pin it.
+EXPECTED_X_ROWS = None
 EXPECTED_SUBREDDITS = {
     "bitcoin": 1_164_734,
     "cryptocurrency": 1_715_219,
@@ -83,18 +93,35 @@ def test_posts_parquet_exists():
 def test_schema_columns():
     # Reading only metadata - fast even on a 1 GB file.
     schema = pq.ParquetFile(POSTS_PATH).schema_arrow
-    assert schema.names == EXPECTED_COLUMNS
+    if HAS_SOURCE:
+        assert schema.names == EXPECTED_COLUMNS + ["source"]
+    else:
+        assert schema.names == EXPECTED_COLUMNS
 
 
 def test_total_row_count():
-    n = pq.ParquetFile(POSTS_PATH).metadata.num_rows
-    assert n == EXPECTED_TOTAL_ROWS
+    if HAS_SOURCE:
+        # Reddit rows are pinned exactly; X rows are checked separately.
+        src = pq.read_table(POSTS_PATH, columns=["source"]).to_pandas()["source"]
+        counts = src.value_counts().to_dict()
+        assert counts.get("reddit") == EXPECTED_TOTAL_ROWS
+        x_rows = counts.get("x", 0)
+        if EXPECTED_X_ROWS is not None:
+            assert x_rows == EXPECTED_X_ROWS
+        else:
+            assert x_rows > 0, (
+                "source column exists but no X rows found - "
+                "did add_x_data.py finish? Pin EXPECTED_X_ROWS after it runs.")
+    else:
+        n = pq.ParquetFile(POSTS_PATH).metadata.num_rows
+        assert n == EXPECTED_TOTAL_ROWS
 
 
 def test_per_subreddit_counts():
     # Load just the one small column we need, not the whole table.
     subs = pq.read_table(POSTS_PATH, columns=["subreddit"]).to_pandas()["subreddit"]
     counts = subs.value_counts().to_dict()
+    counts.pop("x_twitter", None)   # X rows live in their own pseudo-subreddit
     assert counts == EXPECTED_SUBREDDITS
 
 
@@ -188,6 +215,68 @@ def test_count_caps_vs_lower_counts_both_casings():
 def test_load_cashtag_only_tickers_missing_file_is_empty():
     # Without the CSV the extractor must behave exactly as before.
     assert load_cashtag_only_tickers(Path("does/not/exist.csv")) == frozenset()
+
+
+def test_normalise_tweets_maps_dedupes_and_drops_bad_rows():
+    raw = pd.DataFrame([
+        {"timestamp": "2023-11-14T23:06:39.390000+00:00",
+         "description": "$GME to the moon",
+         "url": "https://twitter.com/user/status/111",
+         "embed_title": "Crypto Mikey tweeted about GME", "tweet_type": "tweet"},
+        {"timestamp": "2023-11-15T10:00:00.000000+00:00",
+         "description": "same id again - must be dropped (first seen wins)",
+         "url": "https://twitter.com/user/status/111",
+         "embed_title": "Someone tweeted about GME", "tweet_type": "tweet"},
+        {"timestamp": "not-a-date", "description": "bad date - dropped",
+         "url": "https://twitter.com/user/status/222",
+         "embed_title": "", "tweet_type": "tweet"},
+    ])
+    out = normalise_tweets(raw)
+    assert len(out) == 1
+    row = out.iloc[0]
+    assert row["id"] == "x_111"                 # prefixed - can't hit a reddit id
+    assert row["date"] == "2023-11-14"
+    assert row["source"] == "x"
+    assert row["subreddit"] == "x_twitter"
+    assert row["author"] == "Crypto Mikey"
+    assert row["title"] == "$GME to the moon"   # tweet text lands in title
+    assert row["score"] == 0                    # dataset has no like counts
+
+
+def test_normalise_smt_row_ids_and_dates():
+    # stock-market-tweets-data: id is a ROW NUMBER -> needs the x_smt_ prefix.
+    raw = pd.DataFrame([
+        {"id": 1, "created_at": "2020-04-09 23:59:51+00:00", "text": "$SPX to 10,000"},
+        {"id": 2, "created_at": "2020-04-10 08:00:00+00:00", "text": ""},  # empty -> dropped
+    ])
+    out = normalise_smt(raw)
+    assert len(out) == 1
+    row = out.iloc[0]
+    assert row["id"] == "x_smt_1"           # dataset-scoped prefix
+    assert row["date"] == "2020-04-09"
+    assert row["score"] == 0 and row["author"] == ""
+    assert row["source"] == "x" and row["subreddit"] == "x_twitter"
+
+
+def test_normalise_mjw_engagement_and_per_ticker_dedup():
+    # mjw/stock_market_tweets: real tweet ids, likes/comments, and the same
+    # tweet repeated once per ticker_symbol - must collapse to ONE row.
+    raw = pd.DataFrame([
+        {"tweet_id": 550441509175443456, "writer": "VisualStockRSRC",
+         "post_date": "2015-01-01 00:00:00", "body": "$AAPL and $MSFT lookin good",
+         "comment_num": 2, "retweet_num": 1, "like_num": 5, "ticker_symbol": "AAPL"},
+        {"tweet_id": 550441509175443456, "writer": "VisualStockRSRC",
+         "post_date": "2015-01-01 00:00:00", "body": "$AAPL and $MSFT lookin good",
+         "comment_num": 2, "retweet_num": 1, "like_num": 5, "ticker_symbol": "MSFT"},
+    ])
+    out = normalise_mjw(raw)
+    assert len(out) == 1                    # per-ticker duplicate collapsed
+    row = out.iloc[0]
+    assert row["id"] == "x_550441509175443456"
+    assert row["date"] == "2015-01-01"
+    assert row["score"] == 5                # like_num -> score
+    assert row["num_comments"] == 2         # comment_num -> num_comments
+    assert row["author"] == "VisualStockRSRC"
 
 
 def test_screened_ticker_bare_word_ignored_but_cashtag_counts(tmp_path):

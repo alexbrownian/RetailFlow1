@@ -35,7 +35,9 @@ import zstandard
 
 
 # The columns every cleaned file will have, in this order.
-OUTPUT_COLUMNS = ["id", "date", "author", "score", "subreddit", "title", "selftext", "num_comments"]
+# 'source' says where a row came from: 'reddit' here; X (Twitter) rows get
+# source='x' via src/x_data.py + data_ingestion/scripts/add_x_data.py.
+OUTPUT_COLUMNS = ["id", "date", "author", "score", "subreddit", "title", "selftext", "num_comments", "source"]
 
 
 # ----------------------------------------------------------------------
@@ -112,6 +114,7 @@ def normalise(record):
         "title": title,
         "selftext": selftext,
         "num_comments": int(record.get("num_comments", 0) or 0),
+        "source": "reddit",
     }
 
 
