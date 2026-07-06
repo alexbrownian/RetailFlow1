@@ -44,8 +44,11 @@ RetailFlow1/
 │   ├── raw/         <-- the 15 downloaded .zst dumps (see data/README.md)
 │   ├── processed/   <-- posts.parquet = THE dataset + notebook outputs
 │   └── reference/   <-- Nasdaq ticker list + ticker_classification.csv
+├── example.env              # template for API keys (copy to .env - git-ignored)
 ├── data_ingestion/
 │   ├── README.md            # how to (re-)download dumps + rebuild the dataset
+│   ├── LIVE_INGESTION.md    # THE live-data playbook: keys, rate limits, cadences,
+│   │                        #   fintwit-bot adopt/keep verdicts, StockTwits, alerts
 │   ├── finance_subreddits.txt
 │   └── scripts/
 │       ├── prep_posts.py        # raw Reddit dumps -> posts.parquet (filters + dedup)

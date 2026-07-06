@@ -42,7 +42,7 @@ from src.themes import (
     combine_theme_signals,
     themes_in_text,
 )
-from src.x_data import normalise_tweets, normalise_smt, normalise_mjw
+from src.x_data import normalise_tweets, normalise_smt, normalise_mjw, normalise_x_api
 
 POSTS_PATH = PROJECT_ROOT / "data" / "processed" / "posts.parquet"
 
@@ -271,6 +271,26 @@ def test_normalise_smt_row_ids_and_dates():
     assert row["date"] == "2020-04-09"
     assert row["score"] == 0 and row["author"] == ""
     assert row["source"] == "x" and row["subreddit"] == "x_twitter"
+
+
+def test_normalise_x_api_live_shares_prefix_with_dumps():
+    # Live official-API tweets get the SAME 'x_' prefix as the historical
+    # dumps, so a tweet in both can never double-count (first seen wins).
+    raw = pd.DataFrame([
+        {"id": "1724564208602513837", "created_at": "2026-07-05T14:00:00.000Z",
+         "text": "$GLD breaking out", "author": "goldbug", "likes": 42},
+        {"id": "1724564208602513837", "created_at": "2026-07-05T15:00:00.000Z",
+         "text": "dup id - dropped", "author": "", "likes": 0},
+        {"id": "9", "created_at": "not-a-date", "text": "bad date - dropped",
+         "author": "", "likes": 0},
+    ])
+    out = normalise_x_api(raw)
+    assert len(out) == 1
+    row = out.iloc[0]
+    assert row["id"] == "x_1724564208602513837"
+    assert row["date"] == "2026-07-05"
+    assert row["source"] == "x" and row["subreddit"] == "x_twitter"
+    assert row["score"] == 42   # like count kept for spam filtering only
 
 
 def test_normalise_mjw_engagement_and_per_ticker_dedup():

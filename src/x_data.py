@@ -137,6 +137,27 @@ def normalise_smt(raw: pd.DataFrame) -> pd.DataFrame:
     return _finish(out)
 
 
+def normalise_x_api(raw: pd.DataFrame) -> pd.DataFrame:
+    """LIVE X data from the official v2 API (fetch_x_live.py writes it).
+    The fetcher stores a flat csv: id, created_at, text, author, likes.
+    Real tweet ids get the same 'x_' prefix as the historical dumps, so a
+    tweet present in both can never be double-counted (first seen wins)."""
+    df = raw.copy()
+    ids = pd.to_numeric(df.get("id"), errors="coerce")
+    out = pd.DataFrame({
+        "id": ids.map(lambda v: f"x_{int(v)}" if pd.notna(v) else ""),
+        "date": _dates_from(df.get("created_at")),
+        "author": df.get("author", pd.Series(dtype=str)).fillna("").astype(str),
+        "score": pd.to_numeric(df.get("likes"), errors="coerce").fillna(0).astype(int),
+        "subreddit": "x_twitter",
+        "title": df.get("text", pd.Series(dtype=str)).fillna("").astype(str),
+        "selftext": "",
+        "num_comments": 0,
+        "source": "x",
+    })
+    return _finish(out)
+
+
 def normalise_mjw(raw: pd.DataFrame) -> pd.DataFrame:
     """mjw/stock_market_tweets (2015-2020, top S&P companies).
     Columns: tweet_id, writer, post_date, body, comment_num, retweet_num,
@@ -173,5 +194,12 @@ DATASETS = {
     "stock_market_tweets": {
         "repo": "mjw/stock_market_tweets",
         "normaliser": normalise_mjw,
+    },
+    # LIVE X via the official v2 API - fetch_x_live.py appends to this file
+    # whenever X_BEARER_TOKEN is set in .env (pipeline armed, off until paid).
+    # No HF repo: fetch_x_data.py skips entries without one.
+    "x_api_live": {
+        "repo": None,
+        "normaliser": normalise_x_api,
     },
 }

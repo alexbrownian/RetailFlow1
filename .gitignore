@@ -8,6 +8,10 @@ data/
 !data/processed/README.md
 !data/raw/PUT_DATA_HERE.txt
 
+# secrets - NEVER commit credentials
+.env
+curl.txt
+
 # junk / regenerable
 __pycache__/
 .pytest_cache/
