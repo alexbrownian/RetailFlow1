@@ -11,8 +11,10 @@ THE IDEA (this is the part to understand):
     Think of the count as distance and the first derivative as speed.
     When speed jumps from ~0 to large positive, attention is accelerating -
     that is the inflection / take-off we want to catch early.
-  - Because raw counts are noisy, we SMOOTH them first with a rolling average
-    (average of the last few days). Otherwise every little wiggle looks like a
+  - Because raw counts are noisy, we SMOOTH them first with an EWMA
+    (exponentially weighted moving average - recent days weigh more).
+    IMPORTANT: the velocity is ALWAYS the derivative of this EWMA line,
+    NEVER of the raw mentions - otherwise every little wiggle looks like a
     derivative spike.
   - We then call a day an "inflection day" if its first derivative is unusually
     large compared to that ticker's normal day-to-day change. "Unusually large"
@@ -91,8 +93,9 @@ def compute_inflection(series, smooth_window, k, peak_k=3.0):
     """
     Take a daily count series and return a DataFrame with:
       count           - raw mentions
-      smoothed        - rolling average (less noisy)
-      velocity        - first derivative (change in smoothed vs yesterday)
+      smoothed        - EWMA of the raw mentions (less noisy)
+      velocity        - first derivative OF THE EWMA (change in smoothed vs
+                        yesterday - never computed on the raw mentions)
       is_inflection   - True on days where velocity is unusually high (alias
                         of is_rise, kept for backwards compatibility)
       is_rise         - "take-off": velocity spikes well above normal (concave
@@ -104,7 +107,7 @@ def compute_inflection(series, smooth_window, k, peak_k=3.0):
       is_trough       - a genuine local low of the smoothed line (it fell
                         into this day and rose back out of it)
 
-    smooth_window : how many days to average over (e.g. 3 or 7)
+    smooth_window : EWMA span in days (e.g. 3 or 7; bigger = smoother)
     k             : how many standard deviations away from normal counts as
                     a spike (used symmetrically for both rise and fall)
     peak_k        : how many standard deviations of "prominence" a local
@@ -116,10 +119,12 @@ def compute_inflection(series, smooth_window, k, peak_k=3.0):
     """
     out = pd.DataFrame({"count": series})
 
-    # 1) Smooth: average of the last `smooth_window` days.
-    out["smoothed"] = out["count"].rolling(window=smooth_window, min_periods=1).mean()
+    # 1) Smooth: EWMA with span `smooth_window` (recent days weigh more).
+    out["smoothed"] = out["count"].ewm(span=smooth_window, min_periods=1).mean()
 
-    # 2) First derivative: today's smoothed value minus yesterday's.
+    # 2) First derivative OF THE EWMA: today's smoothed value minus
+    #    yesterday's. Never diff the raw counts - differencing amplifies
+    #    noise, so the derivative only makes sense on the smoothed line.
     out["velocity"] = out["smoothed"].diff().fillna(0)
 
     # 3) Thresholds = typical change +/- k * how spread out the changes are.
@@ -168,7 +173,7 @@ def plot_inflection(result, ticker, out_path):
     # --- Top: raw + smoothed mentions, with rise/fall/peak/trough marked ---
     ax_top.plot(dates, result["count"], color="lightgray", label="raw mentions")
     ax_top.plot(dates, result["smoothed"], color="steelblue", linewidth=2,
-                label="smoothed mentions")
+                label="EWMA of mentions")
     ax_top.scatter(rise_days.index, rise_days["smoothed"], color="green", marker="^",
                    s=60, zorder=5, label="rise (take-off)")
     ax_top.scatter(fall_days.index, fall_days["smoothed"], color="crimson", marker="v",
@@ -184,7 +189,7 @@ def plot_inflection(result, ticker, out_path):
 
     # --- Bottom: the first derivative (velocity) and the thresholds ---
     ax_bottom.plot(dates, result["velocity"], color="darkorange",
-                   label="first derivative (velocity)")
+                   label="first derivative of the EWMA (velocity)")
     ax_bottom.axhline(threshold, color="green", linestyle="--",
                       label="rise threshold")
     ax_bottom.axhline(fall_threshold, color="crimson", linestyle="--",
@@ -192,7 +197,7 @@ def plot_inflection(result, ticker, out_path):
     ax_bottom.axhline(0, color="black", linewidth=0.6)
     ax_bottom.scatter(rise_days.index, rise_days["velocity"], color="green", marker="^", zorder=5)
     ax_bottom.scatter(fall_days.index, fall_days["velocity"], color="crimson", marker="v", zorder=5)
-    ax_bottom.set_title("First derivative - how fast mentions are growing/shrinking")
+    ax_bottom.set_title("First derivative of the EWMA (not raw mentions) - how fast attention is growing/shrinking")
     ax_bottom.set_ylabel("change vs prior day")
     ax_bottom.set_xlabel("date")
     ax_bottom.legend()

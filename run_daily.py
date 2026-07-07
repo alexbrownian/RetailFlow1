@@ -44,7 +44,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(ROOT, "logs")
 SNAP_DIR = os.path.join(ROOT, "data", "processed", "signal_snapshots")
 NOTEBOOKS = ["01_clean_data", "02_mentions_over_time", "06_ticker_sentiment",
-             "07_theme_sentiment", "09_trading_signals"]
+             "07_theme_sentiment", "10_trading_signals"]
 SIGNAL_FILES = ["trade_signals.parquet", "trade_signals_tickers.parquet"]
 
 

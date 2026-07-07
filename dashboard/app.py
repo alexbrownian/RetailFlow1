@@ -1,40 +1,32 @@
 """
-Retail Flow Tracker - investor dashboard
-========================================
-Single output surface for the whole pipeline. Reads ONLY the notebooks'
-saved parquets (no synthetic data; panels explain what to run if their
-input is missing). Charts are chosen for an investor's questions, drawn
-from notebooks 05/07/08/09:
+Retail Flow Tracker - investor dashboard (served by optimised/)
+===============================================================
+A THIN display layer: all loading lives in optimised.data, all maths in
+optimised.metrics, all chart specs in optimised.charts - the same code a
+notebook or a future API can import. The dashboard only arranges panels,
+handles the timeframe, and shows freshness.
 
-  - What would the model trade?      -> Signals blotter (09)
-  - Which themes are taking off?     -> attention z vs threshold (03/05 logic)
-  - How does the crowd feel?         -> theme sentiment lines (07, JPM-style)
-  - How did mood evolve per theme?   -> weekly sentiment heatmap (08)
-  - Where is attention vs mood NOW?  -> momentum map (06/07)
-
-Run:  streamlit run dashboard/app.py     (from the project root)
-Timeframe: pills at the top; "Latest 30d" anchors to the newest data in
-the files (= live once run_daily.py is scheduled). The status strip shows
-whether data is LIVE and when it was last refreshed.
+Run from the project root:   streamlit run dashboard/app.py
+Charts (chosen for an investor, from notebooks 05/06/07/08/09):
+  signals blotter · themes taking off (05) · theme sentiment (07) ·
+  conviction z + weekly heat (08) · momentum map · top tickers (06)
 """
 
 import datetime
 import os
 import sys
 
-import altair as alt
 import pandas as pd
 import streamlit as st
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-from src.themes import THEME_ETFS, build_ticker_to_themes  # noqa: E402
-
-P = os.path.join(ROOT, "data", "processed")
+from optimised import charts, data, metrics                      # noqa: E402
+from src.themes import THEME_ETFS                                # noqa: E402
 
 st.set_page_config(page_title="Retail Flow Tracker", page_icon="📡", layout="wide")
 
-# ---- glassy light theme (cards, soft shadows, subtle blur) ----
+# ---- glassy professional light theme ----
 st.markdown("""
 <style>
 .stApp { background: linear-gradient(180deg,#F6F9FE 0%,#EEF3FA 100%); }
@@ -45,7 +37,6 @@ st.markdown("""
 }
 [data-testid="stMetricValue"] { font-weight: 700; }
 h1,h2,h3 { letter-spacing:-.015em; color:#0F172A; }
-hr { border-color: rgba(15,23,42,.08); }
 .status-chip { display:inline-block; padding:2px 12px; border-radius:999px;
   font-size:.8rem; font-weight:600; margin-right:8px; }
 .live  { background:#DCFCE7; color:#166534; border:1px solid #86EFAC; }
@@ -53,73 +44,55 @@ hr { border-color: rgba(15,23,42,.08); }
 .muted { background:#E2E8F0; color:#334155; }
 </style>""", unsafe_allow_html=True)
 
-FILES = {
-    "counts": os.path.join(P, "daily_ticker_counts.parquet"),
-    "by_source": os.path.join(P, "daily_ticker_counts_by_source.parquet"),
-    "tick_sent": os.path.join(P, "daily_ticker_sentiment.parquet"),
-    "theme_sent": os.path.join(P, "daily_theme_sentiment.parquet"),
-    "signals": os.path.join(P, "trade_signals.parquet"),
-    "signals_tickers": os.path.join(P, "trade_signals_tickers.parquet"),
-}
 
-
+# ---- cached loaders (mtime in the key -> auto-refresh after pipeline runs) ----
 @st.cache_data
-def load(path, mtime, date_col="date"):
-    df = pd.read_parquet(path)
-    df["date"] = pd.to_datetime(df[date_col])
-    return df
+def _load(name, mtime, date_col="date"):
+    return data.load(name, date_col)
 
 
-def maybe(name, date_col="date"):
-    path = FILES[name]
-    if not os.path.exists(path):
-        return None
-    return load(path, os.path.getmtime(path), date_col)
+def get(name, date_col="date"):
+    m = data.mtime(name)
+    return None if m is None else _load(name, m, date_col)
 
 
-counts = maybe("counts")
-theme_sent = maybe("theme_sent")
-tick_sent = maybe("tick_sent")
-by_source = maybe("by_source")
-signals = maybe("signals", "signal_date")
-signals_t = maybe("signals_tickers", "signal_date")
+counts = get("counts")
+theme_sent = get("theme_sent")
+tick_sent = get("tick_sent")
+signals = get("signals", "signal_date")
+signals_t = get("signals_tickers", "signal_date")
 
 st.title("📡 Retail Flow Tracker")
 if counts is None:
-    st.error("No data yet - run notebooks 01 and 02 first.")
+    st.error("No data yet - run notebooks 01 and 02 (or run_daily.py) first.")
     st.stop()
 
-# ---------------- status strip: is this LIVE? when refreshed? ----------------
+# ---- status strip: LIVE or not, and when refreshed ----
 data_max = counts["date"].max().date()
 days_stale = (datetime.date.today() - data_max).days
-newest_mtime = max(os.path.getmtime(p) for p in FILES.values() if os.path.exists(p))
-refreshed = datetime.datetime.fromtimestamp(newest_mtime).strftime("%Y-%m-%d %H:%M")
+newest = max(m for m in (data.mtime(k) for k in data.PATHS) if m is not None)
+refreshed = datetime.datetime.fromtimestamp(newest).strftime("%Y-%m-%d %H:%M")
 log_dir = os.path.join(ROOT, "logs")
-last_run = sorted(os.listdir(log_dir))[-1].replace("run_", "").replace(".log", "") \
-    if os.path.isdir(log_dir) and os.listdir(log_dir) else "never"
-
+last_run = (sorted(os.listdir(log_dir))[-1].replace("run_", "").replace(".log", "")
+            if os.path.isdir(log_dir) and os.listdir(log_dir) else "never")
 chip = ('<span class="status-chip live">● LIVE - data through today</span>'
         if days_stale <= 2 else
         f'<span class="status-chip hist">◆ HISTORICAL - data ends {data_max} '
         f'({days_stale} days ago)</span>')
-st.markdown(chip
-            + f'<span class="status-chip muted">files refreshed {refreshed}</span>'
+st.markdown(chip + f'<span class="status-chip muted">files refreshed {refreshed}</span>'
             + f'<span class="status-chip muted">last pipeline run: {last_run}</span>',
             unsafe_allow_html=True)
 
-# ---------------- timeframe: one obvious control ----------------
+# ---- timeframe pills ----
 lo, hi = counts["date"].min().date(), data_max
 preset = st.radio("Timeframe",
                   ["Latest 30d", "Latest 90d", "Latest 12m", "All data", "Custom"],
                   horizontal=True, index=1,
-                  help="'Latest' anchors to the newest data in the files - "
-                       "with the daily pipeline scheduled, that IS live/now.")
-if preset == "Latest 30d":
-    start, end = max(lo, hi - pd.Timedelta(days=30)), hi
-elif preset == "Latest 90d":
-    start, end = max(lo, hi - pd.Timedelta(days=90)), hi
-elif preset == "Latest 12m":
-    start, end = max(lo, hi - pd.Timedelta(days=365)), hi
+                  help="'Latest' anchors to the newest data - with the daily "
+                       "pipeline scheduled, that IS live/now.")
+spans = {"Latest 30d": 30, "Latest 90d": 90, "Latest 12m": 365}
+if preset in spans:
+    start, end = max(lo, hi - pd.Timedelta(days=spans[preset])), hi
 elif preset == "Custom":
     start, end = st.slider("Custom range", min_value=lo, max_value=hi, value=(lo, hi))
 else:
@@ -134,53 +107,52 @@ def clip(df):
     return out if not out.empty else None
 
 
+# ---- computed frames: maths on FULL history (correct trailing baselines),
+#      window applied only to what is DISPLAYED ----
+@st.cache_data
+def compute(mtime_counts, mtime_sent):
+    tw = data.theme_mentions_wide(counts)
+    att_z = metrics.trailing_z(tw)
+    if theme_sent is not None:
+        n, s = data.theme_sent_wide(theme_sent)
+        conv_z = metrics.conviction_z(n, s)
+        rolled = metrics.rolled_sentiment(theme_sent)
+    else:
+        conv_z = rolled = None
+    return att_z, conv_z, rolled
+
+
+att_z_full, conv_z_full, rolled_full = compute(data.mtime("counts"),
+                                               data.mtime("theme_sent"))
+att_z = att_z_full.loc[str(start):str(end)]
 c = clip(counts)
 th = clip(theme_sent)
 tsent = clip(tick_sent)
 sig_frames = [s for s in (clip(signals), clip(signals_t)) if s is not None]
-if c is None:
-    st.warning("No rows in this timeframe."); st.stop()
 
-# ---------------- theme series (trailing z computed on FULL history,
-# so window changes never distort the baselines - live-parity rule) -------
-lookup = build_ticker_to_themes()
-_tc = counts.copy()
-_tc["themes"] = _tc["ticker"].map(lambda t: lookup.get(t, []))
-theme_daily = (_tc.explode("themes").dropna(subset=["themes"])
-               .groupby(["date", "themes"])["mention_count"].sum().reset_index()
-               .rename(columns={"themes": "theme"}))
-all_days = pd.date_range(counts["date"].min(), counts["date"].max(), freq="D")
-tw = (theme_daily.pivot_table(index="date", columns="theme", values="mention_count")
-      .reindex(all_days).fillna(0))
-tw = tw.loc[:, tw.mean() >= 3]
-r7 = tw.rolling(7, min_periods=1).sum()
-mu = r7.rolling(84, min_periods=28).mean()
-sd = r7.rolling(84, min_periods=28).std()
-att_z_full = ((r7 - mu) / sd.replace(0, pd.NA)).astype(float)
-att_z = att_z_full.loc[str(start):str(end)]
+hot = (att_z.iloc[-1].dropna().sort_values(ascending=False)
+       if len(att_z) else pd.Series(dtype=float))
+top_now = hot.head(6).index.tolist()
 
-# ---------------- KPI row ----------------
+# ---- KPI row ----
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("Ticker mentions", f"{int(c['mention_count'].sum()):,}")
-hot = att_z.iloc[-1].dropna().sort_values(ascending=False) if len(att_z) else pd.Series(dtype=float)
+k1.metric("Ticker mentions", f"{int(c['mention_count'].sum()):,}" if c is not None else "0")
 k2.metric("Hottest theme now", hot.index[0] if len(hot) else "-",
           f"{hot.iloc[0]:+.1f}z" if len(hot) else None)
 if tsent is not None:
     mkt = (tsent["net_bullish"] * tsent["n_posts"]).sum() / tsent["n_posts"].sum()
-    k3.metric("Crowd lean", f"{mkt:+.2f}", help="post-weighted net-bullish; "
-              "retail skews bullish - watch changes, not the level")
+    k3.metric("Crowd lean", f"{mkt:+.2f}",
+              help="post-weighted net-bullish; retail skews bullish - watch changes")
 else:
     k3.metric("Crowd lean", "run nb 06")
-n_sig = sum(len(s) for s in sig_frames)
-k4.metric("Model decisions", n_sig)
+k4.metric("Model decisions", sum(len(s) for s in sig_frames))
 
 st.divider()
 
-# ---------------- 1) SIGNALS BLOTTER (notebook 09) ----------------
+# ---- 1) SIGNALS BLOTTER (10) ----
 st.subheader("Model decisions — BUY / SELL with reasons")
 if not sig_frames:
-    st.info("No signals in this window. Run notebook 09 (or widen the timeframe). "
-            "Every decision carries a conviction score /5 and a full reason.")
+    st.info("No signals in this window - run notebook 10 or widen the timeframe.")
 else:
     sig = pd.concat(sig_frames, ignore_index=True).sort_values("date", ascending=False)
     sig["instrument"] = sig.get("etf", pd.Series(dtype=object)).fillna(
@@ -194,141 +166,61 @@ else:
 
 st.divider()
 
-# ---------------- 2) THEMES TAKING OFF (notebook 03/05 logic) ----------------
+# ---- 2) THEMES TAKING OFF (05) ----
 st.subheader("Themes taking off — attention vs own baseline")
-st.caption("7-day mentions, z-scored against each theme's own trailing 84-day "
-           "baseline. Above the dashed line = statistically unusual crowd (K=2).")
-top_now = hot.head(6).index.tolist() if len(hot) else list(tw.columns[:6])
+st.caption("7-day mentions z-scored against each theme's own trailing 84-day "
+           "baseline; dashed line = take-off threshold (K=2).")
 if not top_now or att_z.empty:
-    st.info("Not enough history in this window for trailing z-scores "
-            "(needs ~28 days of baseline). Pick a longer timeframe.")
-    zplot = pd.DataFrame(columns=["date", "theme", "z"])
+    st.info("Not enough history for trailing z (needs ~28 days) - widen the window.")
 else:
-    zplot = (att_z[top_now].reset_index().rename(columns={"index": "date"})
-             .melt("date", var_name="theme", value_name="z"))
-zchart = (alt.Chart(zplot).mark_line(interpolate="monotone").encode(
-    x=alt.X("date:T", title=None),
-    y=alt.Y("z:Q", title="attention z"),
-    color=alt.Color("theme:N", legend=alt.Legend(orient="bottom")),
-    tooltip=["date:T", "theme:N", alt.Tooltip("z:Q", format="+.2f")]))
-rule = alt.Chart(pd.DataFrame({"y": [2.0]})).mark_rule(
-    strokeDash=[6, 4], color="#DC2626").encode(y="y:Q")
-st.altair_chart((zchart + rule).properties(height=320).interactive(),
-                use_container_width=True)
+    st.altair_chart(charts.takeoff_chart(att_z, top_now), use_container_width=True)
 
-# ---------------- 3) CROWD SENTIMENT BY THEME (notebook 07) ----------------
+# ---- 3) THEME SENTIMENT (07) ----
 st.subheader("Crowd sentiment by theme — 7-day rolling net bullish")
-if th is None:
-    st.info("Run notebook 07 to unlock theme sentiment.")
+if rolled_full is None or th is None:
+    st.info("Run notebooks 06+07 to unlock sentiment panels.")
 else:
     top_t = (th.groupby("theme")["n_posts"].sum()
              .sort_values(ascending=False).head(6).index.tolist())
-    rows = []
-    for theme in top_t:
-        one = (th[th["theme"] == theme].set_index("date")
-               .reindex(pd.date_range(start, end, freq="D")))
-        line = one["net_bullish"].where(one["n_posts"].fillna(0) >= 3) \
-                                 .rolling(7, min_periods=2).mean()
-        rows.append(pd.DataFrame({
-            "date": line.index, "net_bullish": line.values,
-            "theme": f"{theme} ({THEME_ETFS.get(theme, '?')})"}))
-    schart = (alt.Chart(pd.concat(rows)).mark_line(interpolate="monotone").encode(
-        x=alt.X("date:T", title=None),
-        y=alt.Y("net_bullish:Q", title="net bullish (-1..+1)",
-                scale=alt.Scale(domain=[-1, 1])),
-        color=alt.Color("theme:N", legend=alt.Legend(orient="bottom")),
-        tooltip=["date:T", "theme:N", alt.Tooltip("net_bullish:Q", format="+.2f")]))
-    zero = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color="#94A3B8").encode(y="y:Q")
-    st.altair_chart((schart + zero).properties(height=320).interactive(),
+    rolled = rolled_full.loc[str(start):str(end)]
+    st.altair_chart(charts.sentiment_lines(rolled, top_t, THEME_ETFS),
                     use_container_width=True)
 
-    # ---------------- 4) WEEKLY SENTIMENT HEATMAP (notebook 08) ----------------
-    st.subheader("Sentiment heat — theme × week")
-    st.caption("Weekly net-bullish share. Green = bulls dominate, red = bears; "
-               "blank = under 10 scored posts that week.")
-    hm = th.copy()
-    hm["week"] = hm["date"].dt.to_period("W").dt.start_time
-    hm["w_net"] = hm["net_bullish"] * hm["n_posts"]
-    wk = (hm.groupby(["week", "theme"])
-          .agg(w=("w_net", "sum"), n=("n_posts", "sum")).reset_index())
-    wk = wk[(wk["n"] >= 10) & (wk["theme"].isin(top_t))].copy()
-    wk["net"] = wk["w"] / wk["n"]
-    heat = alt.Chart(wk).mark_rect(cornerRadius=3).encode(
-        x=alt.X("week:T", title=None),
-        y=alt.Y("theme:N", title=None),
-        color=alt.Color("net:Q", scale=alt.Scale(scheme="redyellowgreen",
-                                                 domain=[-0.6, 0.6]),
-                        legend=alt.Legend(title="net bullish")),
-        tooltip=["week:T", "theme:N", alt.Tooltip("net:Q", format="+.2f")])
-    st.altair_chart(heat.properties(height=40 + 32 * len(top_t)),
-                    use_container_width=True)
-
-    # ---------------- 5) MOMENTUM MAP - where attention meets mood ----------
-    st.subheader("Momentum map — last 5 days vs window baseline")
-    st.caption("x = attention momentum (z) · y = sentiment change vs own average "
-               "· bubble = posts. Top-right = crowding in with improving mood.")
-    rows = []
-    for theme in th["theme"].unique():
-        one = (th[th["theme"] == theme].set_index("date")
-               .reindex(pd.date_range(start, end, freq="D")))
-        n = one["n_posts"].fillna(0)
-        if n.sum() < 50:
-            continue
-        std = n.std()
-        lz = (n.iloc[-5:].mean() - n.mean()) / std if std and std > 0 else 0.0
-        s5, sb = one["net_bullish"].iloc[-5:].mean(), one["net_bullish"].mean()
-        if pd.isna(s5) or pd.isna(sb):
-            continue
-        rows.append({"theme": f"{theme} ({THEME_ETFS.get(theme, '?')})",
-                     "posts": int(n.sum()), "momentum_z": round(float(lz), 2),
-                     "sent_change": round(float(s5 - sb), 3),
-                     "lean_5d": round(float(s5), 2)})
-    mm = pd.DataFrame(rows)
-    if len(mm):
-        base = alt.Chart(mm).encode(
-            x=alt.X("momentum_z:Q", title="mention momentum (z)"),
-            y=alt.Y("sent_change:Q", title="sentiment change"),
-            tooltip=["theme", "posts", "momentum_z", "sent_change", "lean_5d"])
-        pts = base.mark_circle(opacity=.6, stroke="#0F172A", strokeWidth=.5).encode(
-            size=alt.Size("posts:Q", legend=None),
-            color=alt.Color("lean_5d:Q", scale=alt.Scale(scheme="redyellowgreen",
-                                                         domain=[-1, 1]),
-                            legend=alt.Legend(title="5d lean")))
-        lbl = base.mark_text(dy=-12, fontSize=11).encode(text="theme:N")
-        st.altair_chart((pts + lbl).properties(height=420).interactive(),
+    # ---- 4) RETAIL CONVICTION (08): z lines + weekly heat ----
+    st.subheader("Retail conviction — crowd size × direction (notebook 08)")
+    st.caption("Bull pressure (posts × net-bullish) z-scored vs own history; "
+               "±2 dashed = the notebook-09 entry/exit thresholds.")
+    conv_z = conv_z_full.loc[str(start):str(end)]
+    conv_themes = [t for t in top_t if t in conv_z.columns]
+    if conv_themes:
+        st.altair_chart(charts.conviction_lines(conv_z, conv_themes),
                         use_container_width=True)
+    st.subheader("Sentiment heat — theme × week")
+    wk = metrics.weekly_net(th, top_t)
+    if len(wk):
+        st.altair_chart(charts.conviction_heat(wk), use_container_width=True)
 
-# ---------------- extras, tucked away ----------------
-with st.expander("More: attention movers & Reddit vs X split"):
-    left, right = st.columns(2)
-    with left:
-        st.markdown("**Top mentioned tickers**")
-        st.dataframe(c.groupby("ticker")["mention_count"].sum()
-                     .sort_values(ascending=False).head(12).rename("mentions")
-                     .reset_index(), hide_index=True, use_container_width=True)
-    with right:
-        st.markdown("**Fastest risers (5d velocity z)**")
-        wide_t = (c.pivot_table(index="date", columns="ticker",
-                                values="mention_count", aggfunc="sum")
-                  .asfreq("D").fillna(0))
-        velo = wide_t.rolling(7, min_periods=1).sum().diff()
-        vz = ((velo - velo.mean()) / velo.std().replace(0, pd.NA)).iloc[-5:].mean()
-        st.dataframe(vz.dropna().sort_values(ascending=False).head(12)
-                     .round(2).rename("velocity_z").reset_index(),
-                     hide_index=True, use_container_width=True)
-    bs = clip(by_source)
-    if bs is not None and bs["source"].nunique() > 1:
-        split = bs.groupby(["date", "source"])["mention_count"].sum().reset_index()
-        st.altair_chart(alt.Chart(split).mark_line().encode(
-            x="date:T", y="mention_count:Q", color="source:N",
-            tooltip=["date:T", "source:N", "mention_count:Q"]).interactive(),
-            use_container_width=True)
+    # ---- 5) MOMENTUM MAP (06/07) ----
+    st.subheader("Momentum map — last 5 days vs window baseline")
+    st.caption("x = attention momentum · y = sentiment CHANGE vs own average "
+               "· bubble = posts. Top-right = crowding in with improving mood.")
+    n_w, s_w = data.theme_sent_wide(th)
+    mm = metrics.momentum_stats(n_w, s_w)
+    if len(mm):
+        st.altair_chart(charts.momentum_map(mm, THEME_ETFS), use_container_width=True)
 
-# ---------------- sidebar: pipeline controls ----------------
+# ---- extras ----
+with st.expander("More: top tickers (mentions · velocity · sentiment)"):
+    st.caption("velocity_z = day-over-day change of the EWMA of mentions "
+               "(derivative of the smoothed line, not raw counts), z-scored.")
+    if c is not None:
+        st.dataframe(metrics.top_tickers(c, tsent), hide_index=True,
+                     use_container_width=True)
+
+# ---- sidebar: pipeline ----
 st.sidebar.header("Pipeline")
-st.sidebar.caption("run_daily.py: fetch live sources → merge → notebooks "
-                   "01-09 → snapshot signals. 5-15 min with new data; close "
-                   "Jupyter kernels first if a merge is due.")
+st.sidebar.caption("run_daily.py: fetch → merge → notebooks → snapshot. "
+                   "5-15 min with new data; close Jupyter first if a merge is due.")
 if st.sidebar.button("🔄 Run daily pipeline now"):
     import subprocess
     with st.spinner("Running the full pipeline - keep this tab open..."):
@@ -342,5 +234,5 @@ if st.sidebar.button("🔄 Run daily pipeline now"):
         st.sidebar.error("Pipeline failed - tail of output:")
         st.sidebar.code((r.stdout + "\n" + r.stderr)[-1500:])
 
-st.caption("Sources: notebooks 02 (counts), 06/07 (sentiment), 09 (signals). "
-           "Nothing here is synthetic - re-run the pipeline to refresh.")
+st.caption("Analytics served by the optimised/ package (vectorised, cached); "
+           "heavy steps run in the pipeline. Nothing here is synthetic.")
