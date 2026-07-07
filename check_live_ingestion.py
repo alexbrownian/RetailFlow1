@@ -93,8 +93,8 @@ else:
                       f"newest post {grp['date'].max()}")
         else:
             print(f"all        : {verdict(t['date'].max())} newest post {t['date'].max()}")
-        print("(raw StockTwits does NOT merge into the parquet yet - it accumulates "
-              "for sentiment calibration; X merges via add_x_data.py once live.)")
+        print("(live Reddit, X and StockTwits raw all APPEND into posts.parquet via "
+              "merge_live.py - run it, or run_daily.py / fetch_all.py, to pull them in.)")
     except Exception as exc:
         print(f"[UNREADABLE] posts.parquet could not be opened ({exc}).")
         print("If a merge/swap is mid-flight or another program holds the file,")

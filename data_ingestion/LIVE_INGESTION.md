@@ -55,7 +55,8 @@ sent). `--check` prints the key check without calling anything.
 | `FETCHLAYER_KEY` | `api_calls/fetch_reddit_live.py` (preferred Reddit backend) | fetchlayer.dev dashboard → copy key into `.env`. 1 credit per request; test with `python api_calls/test_fetchlayer.py` (1 credit) |
 | `REDDIT_APP_NAME`, `REDDIT_PERSONAL_USE`, `REDDIT_SECRET`, `REDDIT_USERNAME`, `REDDIT_PASSWORD` | `api_calls/fetch_reddit_live.py` (official fallback backend) | https://old.reddit.com/prefs/apps/ → create app, type **script** → the id under the name = PERSONAL_USE, the secret = SECRET. Consider a dedicated account |
 | StockTwits | `api_calls/fetch_stocktwits.py` | none needed (public read-only streams) |
-| `X_BEARER_TOKEN` | `api_calls/fetch_x_live.py` (official v2 API — **pipeline armed, off until you pay**) | developer.x.com → sign up for a paid tier → Projects & Apps → your app → Bearer Token. Paste into `.env`; the fetcher detects it automatically |
+| `FETCHLAYER_KEY` (again) | `api_calls/fetch_x_live.py` (**preferred X backend**) | the SAME FetchLayer key also drives X via `POST /api/twitter/search` (product=Latest) — **no paid X account needed**. This is the path that works today |
+| `X_BEARER_TOKEN` | `api_calls/fetch_x_live.py` (official v2 API fallback) | developer.x.com → sign up for a paid tier → Projects & Apps → your app → Bearer Token. Paste into `.env`; used only if no FetchLayer key is present |
 | X (unofficial) | not built | the curl.txt session-replay trick — fragile + ToS risk, see above |
 
 ### X official API — what paying gets you, and the quota maths
@@ -156,7 +157,9 @@ Same recipe as the X datasets — one normaliser + one registry entry:
 2. Normaliser maps to the 9-column schema with a distinct `source` value
    and a collision-proof id prefix (`st_` for StockTwits) —
    `src/stocktwits_data.py` is ready.
-3. Merge step unions it into `posts.parquet` (extend `add_x_data.py`'s
-   registry pattern when StockTwits volume justifies it).
+3. Merge step unions it into `posts.parquet` —
+   `data_ingestion/scripts/merge_live.py` appends every live source
+   (Reddit, X, StockTwits) with the "first seen wins" id dedup. Add a
+   `collect_*` helper there for a brand-new source.
 4. Everything downstream (screening, counts, sentiment, signals,
    dashboard) works unchanged — that is the whole point of the schema.

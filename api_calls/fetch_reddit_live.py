@@ -23,9 +23,9 @@
 #   last 20k ids) plus a created-time watermark where the backend provides
 #   timestamps. Final dedup happens again at merge time (first seen wins).
 #
-# NOTE ON MERGING: raw accumulates here; posts reach posts.parquet via the
-# merge step (next build). check_live_ingestion.py layer 1 goes LIVE from
-# the first successful run; layer 2 staying stale until the merge is correct.
+# NOTE ON MERGING: raw accumulates here; posts reach posts.parquet via
+# data_ingestion/scripts/merge_live.py (append-only, "first seen wins").
+# run_daily.py and `fetch_all.py` (normal mode) call it for you.
 
 import argparse
 import datetime
@@ -40,6 +40,11 @@ import zstandard
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(THIS_DIR)
 sys.path.insert(0, PROJECT_ROOT)
+
+try:                     # post titles contain emoji; don't die on cp1252
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 OUT_DIR = os.path.join(PROJECT_ROOT, "data", "raw", "RedditLive")
 SEEN_FILE = os.path.join(PROJECT_ROOT, "data", "reference", "reddit_live_seen.json")
@@ -257,8 +262,8 @@ def main():
     path = append_raw(fresh)
     save_seen(seen + [post_id(p) for p in fresh])
     print(f"kept {len(fresh)} NEW posts (of {len(posts)} fetched) -> {path}")
-    print("raw accumulates here; the merge into posts.parquet is the next "
-          "pipeline step (see LIVE_INGESTION.md).")
+    print("raw accumulates here; append into posts.parquet with:  "
+          "python data_ingestion/scripts/merge_live.py")
     return 0
 
 

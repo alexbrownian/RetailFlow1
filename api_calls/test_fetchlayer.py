@@ -10,8 +10,14 @@
 
 import json
 import os
+import sys
 
 import requests
+
+try:                     # post titles contain emoji; don't die on cp1252
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(THIS_DIR)          # .env lives at the project root

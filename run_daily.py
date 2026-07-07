@@ -5,7 +5,8 @@
 # new numbers. This is what the Task Scheduler job (or the dashboard's
 # refresh button) runs every day.
 #
-#   python run_daily.py                # full run
+#   python run_daily.py                     # full run
+#   python run_daily.py --start-date 2022-01-01   # slice from a different depth
 #   python run_daily.py --fetch-only   # FETCH LAYER ONLY: call every source
 #                                      #   that has credentials, skip the rest
 #                                      #   gracefully, write raw files, stop
@@ -17,15 +18,19 @@
 #               it checks .env first and calls only the sources whose keys
 #               are filled (empty key = ignored entirely). You can also run
 #               it directly:  python api_calls/fetch_all.py
-#   2. MERGE  - add_x_data.py rebuilds the X block of posts.parquet if the
-#               live X raw file changed since the parquet was written.
+#   2. MERGE  - merge_live.py APPENDS every new live post (Reddit, X and
+#               StockTwits raw) into posts.parquet ("first seen wins",
+#               idempotent). This is the step that makes live data reach the
+#               signals. (add_x_data.py is separate - it rebuilds the X block
+#               from the frozen HuggingFace dumps, for the historical backfill.)
 #   3. COMPUTE - executes the notebooks IN PLACE, in chain order:
 #                 01 (slice+screening) -> 02 (counts) -> 06 (ticker sent)
 #                 -> 07 (theme sent) -> 09 (BUY/SELL signals)
 #               The notebooks ARE the pipeline - one source of truth, and
 #               after each run they hold fresh outputs you can open.
-#               IMPORTANT one-time setup: in notebook 01 set END_DATE=None
-#               so the window automatically extends as new data arrives.
+#               The window is passed to notebook 01 automatically via env
+#               vars (START_DATE = --start-date, END_DATE = open), so the
+#               window always extends to the newest data - no notebook edit.
 #   4. SNAPSHOT - copies trade_signals*.parquet to
 #                 data/processed/signal_snapshots/<date>_*.parquet.
 #               Snapshots are NEVER revised - they are the point-in-time
@@ -43,12 +48,23 @@ import shutil
 import subprocess
 import sys
 
+try:                     # posts contain emoji/links; don't die on cp1252
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(ROOT, "logs")
 SNAP_DIR = os.path.join(ROOT, "data", "processed", "signal_snapshots")
 NOTEBOOKS = ["01_clean_data", "02_mentions_over_time", "06_ticker_sentiment",
              "07_theme_sentiment", "10_trading_signals"]
 SIGNAL_FILES = ["trade_signals.parquet", "trade_signals_tickers.parquet"]
+
+# The history depth notebook 01 slices from. END is always OPEN for live
+# runs, so the window auto-extends to the newest post each day. Override the
+# start with --start-date. Notebook 01 reads these two via PIPELINE_START_DATE
+# / PIPELINE_END_DATE (empty END = open-ended).
+DEFAULT_START_DATE = "2023-10-01"
 
 
 def log(msg, fh=None):
@@ -62,7 +78,8 @@ def run(cmd, fh, dry, show=False):
     log("RUN  " + " ".join(cmd), fh)
     if dry:
         return 0
-    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
     if show and r.stdout:                       # echo the child's own output
         for line in r.stdout.strip().splitlines():
             log("  | " + line, fh)
@@ -78,6 +95,10 @@ def main():
     p.add_argument("--fetch-only", action="store_true",
                    help="run the fetch layer only (each source self-skips "
                         "if its key is missing), then stop")
+    p.add_argument("--start-date", default=DEFAULT_START_DATE,
+                   help=f"history depth notebook 01 slices from (default "
+                        f"{DEFAULT_START_DATE}); the END is always open so the "
+                        f"window extends to the newest data")
     args = p.parse_args()
     dry = args.dry_run
 
@@ -89,9 +110,10 @@ def main():
 
     py = sys.executable
 
-    # ---- 1. FETCH: one file owns it all (key check + calls) ----
+    # ---- 1. FETCH: one file owns it all (key check + calls). --no-merge:
+    #         write raw only; step 2 below owns the single parquet append. ----
     if not args.skip_fetch:
-        run([py, "api_calls/fetch_all.py"], fh, dry, show=True)
+        run([py, "api_calls/fetch_all.py", "--no-merge"], fh, dry, show=True)
     else:
         log("fetch skipped (--skip-fetch)", fh)
 
@@ -100,18 +122,19 @@ def main():
             "run check_live_ingestion.py to see what landed ===", fh)
         return 0
 
-    # ---- 2. MERGE (only if live X raw is newer than the parquet) ----
-    posts = os.path.join(ROOT, "data", "processed", "posts.parquet")
-    x_live = os.path.join(ROOT, "data", "raw", "X Data", "x_api_live.csv.zst")
-    if os.path.exists(x_live) and os.path.exists(posts) \
-            and os.path.getmtime(x_live) > os.path.getmtime(posts):
-        log("live X raw changed -> rebuilding X block (close Jupyter first!)", fh)
-        if run([py, "data_ingestion/scripts/add_x_data.py"], fh, dry) != 0:
-            log("merge failed - continuing with the existing parquet", fh)
-    else:
-        log("no new X raw - merge skipped", fh)
+    # ---- 2. MERGE: append EVERY live source (Reddit / X / StockTwits) into
+    #         posts.parquet. Append-only + idempotent, so it's safe to always
+    #         run - it appends nothing when there is nothing new. ----
+    log("merging live raw -> posts.parquet (close Jupyter first!)", fh)
+    if run([py, "data_ingestion/scripts/merge_live.py"], fh, dry, show=True) != 0:
+        log("merge failed - continuing with the existing parquet", fh)
 
     # ---- 3. COMPUTE: execute the notebook chain in place ----
+    # Notebook 01 reads these; END empty = open-ended so the window extends to
+    # the newest post. The child nbconvert processes inherit this environment.
+    os.environ["PIPELINE_START_DATE"] = args.start_date
+    os.environ["PIPELINE_END_DATE"] = ""      # empty => None => window stays open
+    log(f"notebook window: START_DATE={args.start_date}  END_DATE=open (extends to newest)", fh)
     for nb in NOTEBOOKS:
         code = run([py, "-m", "jupyter", "nbconvert", "--to", "notebook",
                     "--execute", "--inplace",

@@ -1,22 +1,33 @@
 # fetch_all.py
 # ============
-# THE ONE FILE for all live API calls. Run it and it:
-#   1. CHECKS .env - for each source, is its key filled?
-#        filled -> the source is called this run
-#        empty  -> the source is ignored completely (no request sent)
-#   2. CALLS every enabled fetcher (they live in this same folder)
+# THE ONE FILE for all live API calls. It has TWO clearly separated modes:
 #
-#   python api_calls/fetch_all.py           # check keys, then fetch
-#   python api_calls/fetch_all.py --check   # print the check ONLY, call nothing
-#   python api_calls/fetch_all.py --test    # 1-credit FetchLayer key test only
+#   TESTING MODE   python api_calls/fetch_all.py --test
+#       Makes EXACTLY ONE FetchLayer call, PRINTS what came back, and writes
+#       NOTHING (no raw files, no parquet change). Use it to prove your key
+#       works and eyeball the data. Pick the endpoint with --source:
+#           --test                 (Reddit: r/wallstreetbets newest 5)
+#           --test --source x      (X: newest tweets for a few cashtags)
+#
+#   NORMAL MODE    python api_calls/fetch_all.py
+#       1. CHECKS .env - a source with its key filled is CALLED; a source
+#          with an empty key is SKIPPED (no request sent).
+#       2. CALLS every enabled fetcher (writes raw files).
+#       3. APPENDS the new posts into data/processed/posts.parquet
+#          (merge_live.py, "first seen wins"). Skip this with --no-merge.
+#
+#   Other flags:
+#       --check     print the .env key check ONLY, call nothing
+#       --no-merge  NORMAL mode but stop after writing raw (no parquet append)
 #
 # Sources and their keys (.env at the project root):
-#   StockTwits : no key needed - always called
-#   Reddit     : FETCHLAYER_KEY (fetchlayer.dev)  OR  official REDDIT_* keys
-#   X          : X_BEARER_TOKEN (developer.x.com)
+#   StockTwits : no key needed          - always called
+#   Reddit     : FETCHLAYER_KEY         (or official REDDIT_* keys)
+#   X          : FETCHLAYER_KEY         (or official X_BEARER_TOKEN)
+#   -> a single FetchLayer key lights up BOTH Reddit and X.
 #
-# run_daily.py calls this file for its fetch stage - same code either way.
-# After fetching, see what landed:  python check_live_ingestion.py
+# run_daily.py calls this file (with --no-merge) then merges once itself.
+# After a run, see what landed:  python check_live_ingestion.py
 
 import argparse
 import os
@@ -41,42 +52,66 @@ def read_env():
 
 
 def fetch_plan():
-    """THE CHECK. Returns [(source, will_call, reason, script_filename)]."""
+    """THE CHECK. Returns [(source, will_call, reason, script_args)]."""
     keys = read_env()
 
     def have(*names):                       # is ANY of these keys filled?
         return any(keys.get(n, "").strip() for n in names)
 
-    reddit_ok = have("FETCHLAYER_KEY", "FETCHLAYER_API_KEY") \
-        or (have("REDDIT_PERSONAL_USE") and have("REDDIT_SECRET"))
-    reddit_why = ("FetchLayer key found" if have("FETCHLAYER_KEY", "FETCHLAYER_API_KEY")
+    fetchlayer = have("FETCHLAYER_KEY", "FETCHLAYER_API_KEY")
+
+    reddit_ok = fetchlayer or (have("REDDIT_PERSONAL_USE") and have("REDDIT_SECRET"))
+    reddit_why = ("FetchLayer key found" if fetchlayer
                   else "official Reddit keys found" if reddit_ok
                   else "no FETCHLAYER_KEY / REDDIT_* keys")
+
+    x_ok = fetchlayer or have("X_BEARER_TOKEN")
+    x_why = ("FetchLayer key found" if fetchlayer
+             else "official X_BEARER_TOKEN found" if x_ok
+             else "no FETCHLAYER_KEY / X_BEARER_TOKEN")
+
     return [
-        ("StockTwits", True, "public API - no key needed", "fetch_stocktwits.py"),
-        ("Reddit", reddit_ok, reddit_why, "fetch_reddit_live.py"),
-        ("X", have("X_BEARER_TOKEN"),
-         "X_BEARER_TOKEN found" if have("X_BEARER_TOKEN") else "X_BEARER_TOKEN empty",
-         "fetch_x_live.py"),
+        ("StockTwits", True, "public API - no key needed", ["fetch_stocktwits.py"]),
+        ("Reddit", reddit_ok, reddit_why, ["fetch_reddit_live.py"]),
+        ("X", x_ok, x_why, ["fetch_x_live.py"]),
     ]
 
 
+def run_script(script_args, extra=None):
+    return subprocess.run([sys.executable, os.path.join(THIS_DIR, script_args[0]),
+                           *script_args[1:], *(extra or [])],
+                          cwd=PROJECT_ROOT).returncode
+
+
+def run_test(source):
+    """TESTING MODE: exactly one FetchLayer call, prints output, writes nothing."""
+    print("=" * 60)
+    print(f"TESTING MODE - one FetchLayer call ({source}), nothing is written")
+    print("=" * 60)
+    if source == "x":
+        return run_script(["fetch_x_live.py", "--test"])
+    return run_script(["test_fetchlayer.py"])       # Reddit, 1 credit
+
+
 def main():
-    p = argparse.ArgumentParser(description="Check keys, then call every enabled API")
-    p.add_argument("--check", action="store_true",
-                   help="print the key check only - make no API calls")
+    p = argparse.ArgumentParser(description="Live API calls: --test (1 call) or normal (fetch + append)")
     p.add_argument("--test", action="store_true",
-                   help="run the 1-credit FetchLayer key test only")
+                   help="TESTING MODE: ONE FetchLayer call, print it, write nothing")
+    p.add_argument("--source", choices=["reddit", "x"], default="reddit",
+                   help="which endpoint --test hits (default: reddit)")
+    p.add_argument("--check", action="store_true",
+                   help="print the .env key check only - make no API calls")
+    p.add_argument("--no-merge", action="store_true",
+                   help="NORMAL mode but skip the parquet append (raw files only)")
     args = p.parse_args()
 
+    # ---- TESTING MODE ---------------------------------------------------
     if args.test:
-        r = subprocess.run([sys.executable,
-                            os.path.join(THIS_DIR, "test_fetchlayer.py")],
-                           cwd=PROJECT_ROOT)
-        return r.returncode
+        return run_test(args.source)
 
+    # ---- NORMAL MODE ----------------------------------------------------
     plan = fetch_plan()
-    print("API key check (.env at project root):")
+    print("NORMAL MODE - API key check (.env at project root):")
     for name, will_call, why, _ in plan:
         print(f"  {'CALL' if will_call else 'SKIP'}  {name:<10} ({why})")
     if args.check:
@@ -85,17 +120,28 @@ def main():
 
     print()
     failed = []
-    for name, will_call, _, script in plan:
+    for name, will_call, _, script_args in plan:
         if not will_call:
             continue
         print(f"--- {name} ---")
-        r = subprocess.run([sys.executable, os.path.join(THIS_DIR, script)],
-                           cwd=PROJECT_ROOT)
-        if r.returncode != 0:
+        if run_script(script_args) != 0:
             failed.append(name)
 
-    print("\ndone." + (f" FAILED: {', '.join(failed)}" if failed else " all sources ok."))
-    print("see what landed:  python check_live_ingestion.py")
+    print("\nfetch done." + (f" FAILED: {', '.join(failed)}" if failed else " all sources ok."))
+
+    # ---- APPEND the fresh raw into posts.parquet ------------------------
+    if args.no_merge:
+        print("--no-merge: raw written, parquet NOT touched. "
+              "To append later:  python data_ingestion/scripts/merge_live.py")
+    else:
+        print("\n--- MERGE: appending new posts into posts.parquet ---")
+        merge_rc = subprocess.run(
+            [sys.executable, os.path.join(PROJECT_ROOT, "data_ingestion", "scripts", "merge_live.py")],
+            cwd=PROJECT_ROOT).returncode
+        if merge_rc != 0:
+            failed.append("merge")
+
+    print("\nsee what landed:  python check_live_ingestion.py")
     return 1 if failed else 0
 
 

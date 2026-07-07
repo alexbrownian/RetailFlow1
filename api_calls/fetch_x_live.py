@@ -1,38 +1,40 @@
 # fetch_x_live.py
 # ===============
-# LIVE X (Twitter) ingestion via the OFFICIAL v2 API - built now, armed
-# later: it does nothing until you put a bearer token in .env. The moment
-# you pay for API access and set the token, the whole pipeline lights up
-# with ZERO other changes:
+# LIVE X (Twitter) ingestion with TWO interchangeable backends - whichever
+# has a key in .env gets used (FetchLayer preferred if both are present):
 #
-#     .env:  X_BEARER_TOKEN = AAAA....           (from developer.x.com)
-#     python api_calls/fetch_x_live.py                    (on a schedule)
-#     python data_ingestion/scripts/add_x_data.py         (rebuilds X block)
+#   A) FETCHLAYER (fetchlayer.dev - third-party structured social API)
+#        .env:  FETCHLAYER_KEY = ss-...           (the SAME key as Reddit)
+#        One POST per cashtag-chunk to /api/twitter/search, product=Latest.
+#        Billing: 1 credit per REQUEST (same pool as the Reddit fetcher).
+#        NO paid X developer account needed - this is the path that works
+#        today when you only have a FetchLayer key.
+#   B) OFFICIAL X v2 API (needs a PAID developer account)
+#        .env:  X_BEARER_TOKEN = AAAA....         (from developer.x.com)
+#        v2 recent-search (last 7 days). Armed but off until you pay.
 #
-# It appends tweets to data/raw/X Data/x_api_live.csv.zst - which is a
-# registered dataset in src/x_data.py (normalise_x_api), so add_x_data.py
-# merges it into posts.parquet exactly like the historical dumps. Real
-# tweet ids share the 'x_' prefix with the dumps, so overlaps dedupe
-# automatically (first seen wins).
+#   python api_calls/fetch_x_live.py --test   # ONE small call, writes nothing
+#   python api_calls/fetch_x_live.py          # real poll (fetch_all calls this)
+#   python api_calls/fetch_x_live.py --max-tweets 150
 #
-# WHAT IT QUERIES: the v2 recent-search endpoint (last 7 days) with a
-# cashtag query built from your theme anchors + retail favourites, English,
-# retweets excluded. Edit build_query() to taste - queries are limited to
-# ~512 chars on the Basic tier, so symbols are chunked into several calls.
+# OUTPUT (both backends): data/raw/X Data/x_api_live.csv.zst
+#   a flat csv (id, created_at, text, author, likes) - a REGISTERED dataset
+#   (x_api_live in src/x_data.py, normalise_x_api). Real tweet ids share the
+#   'x_' prefix with the historical dumps, so overlaps dedupe automatically
+#   (first seen wins). The merge into posts.parquet is done by
+#   data_ingestion/scripts/merge_live.py (run_daily.py calls it).
 #
-# QUOTA PROTECTION (important - read tiers on developer.x.com/en/portal):
-#   - Basic tier reads are capped per MONTH (order of 10-15k posts) and
-#     ~60 requests / 15 min. MAX_TWEETS_PER_RUN below is your budget seat
-#     belt: e.g. cap 300/run x 24 runs/day ~ 7.2k/day -> TOO MUCH for
-#     Basic. Do the maths for your tier and cadence BEFORE scheduling:
-#     Basic ~ run 2-3x/day with a 150-tweet cap; Pro ~ hourly is fine.
-#   - On HTTP 429 the script stops immediately; the next run catches up.
-#
-# Run: python api_calls/fetch_x_live.py [--max-tweets 300]
+# QUOTA NOTES:
+#   FetchLayer - 1 credit per chunk-request; the default symbol list is a
+#     few chunks per run, so a run costs a handful of credits.
+#   Official   - reads capped per MONTH and ~60 req/15min; --max-tweets is
+#     your seat belt. Both backends stop instantly on HTTP 429/402.
 
 import argparse
+import datetime
 import io
 import os
+import re
 import sys
 import time
 
@@ -44,30 +46,47 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(THIS_DIR)
 sys.path.insert(0, PROJECT_ROOT)
 
+try:                     # tweets contain emoji/links; don't die on cp1252
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 from src.themes import THEME_ETFS  # noqa: E402
 
 OUT_FILE = os.path.join(PROJECT_ROOT, "data", "raw", "X Data", "x_api_live.csv.zst")
+FETCHLAYER_URL = "https://fetchlayer.dev/api/twitter/search"
 SEARCH_URL = "https://api.x.com/2/tweets/search/recent"
 PAGE_SIZE = 100          # max_results per request (10-100)
 PAUSE_S = 3.0            # polite gap between requests
+STATUS_ID = re.compile(r"/status/(\d+)")
 
 
-def get_token() -> str | None:
-    """os.environ first, then .env read by hand (no python-dotenv needed)."""
-    token = os.environ.get("X_BEARER_TOKEN", "")
+def load_env():
+    """Read keys from .env DIRECTLY (no python-dotenv), os.environ fallback.
+    Accepts FETCHLAYER_KEY or FETCHLAYER_API_KEY (same key the Reddit
+    fetcher uses)."""
+    from_file = {}
     env_path = os.path.join(PROJECT_ROOT, ".env")
-    if not token and os.path.exists(env_path):
+    if os.path.exists(env_path):
         for line in open(env_path, encoding="utf-8"):
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 k, v = line.split("=", 1)
-                if k.strip() == "X_BEARER_TOKEN" and v.strip():
-                    token = v.strip()
-    return token or None
+                from_file[k.strip()] = v.strip()
+
+    def get(*names):
+        for name in names:
+            v = from_file.get(name) or os.environ.get(name, "")
+            if v.strip():
+                return v.strip()
+        return ""
+
+    return {"FETCHLAYER_API_KEY": get("FETCHLAYER_KEY", "FETCHLAYER_API_KEY"),
+            "X_BEARER_TOKEN": get("X_BEARER_TOKEN")}
 
 
-def build_queries() -> list[str]:
-    """Cashtag queries chunked to stay under the ~512-char query limit."""
+def build_queries():
+    """Cashtag queries chunked to stay well under any query-length limit."""
     core = {"GME", "AMC", "NVDA", "TSLA", "AAPL", "PLTR", "COIN", "MSTR", "SMCI"}
     symbols = sorted(set(THEME_ETFS.values()) | core)
     queries, chunk = [], []
@@ -81,9 +100,109 @@ def build_queries() -> list[str]:
     return queries
 
 
-def fetch(token: str, max_tweets: int) -> list[dict]:
-    """Pull recent tweets across the chunked queries, stopping at the
-    budget cap or the first 429."""
+# ---------------- backend A: FetchLayer ----------------
+def _fl_row(t):
+    """Map ONE FetchLayer tweet object to our flat raw schema. FetchLayer's
+    exact field names can shift, so every field is looked up defensively.
+    Returns None if the tweet has no usable numeric status id."""
+    url = t.get("url") or t.get("tweetUrl") or ""
+    tweet_id = ""
+    m = STATUS_ID.search(url) if isinstance(url, str) else None
+    if m:
+        tweet_id = m.group(1)
+    else:
+        for key in ("id", "tweetId", "id_str", "restId"):
+            if str(t.get(key, "")).isdigit():
+                tweet_id = str(t[key])
+                break
+    if not tweet_id:
+        return None
+    author = t.get("author") or {}
+    handle = (author.get("handle") or author.get("username") or author.get("screenName")
+              if isinstance(author, dict) else author) or ""
+    created = (t.get("createdAt") or t.get("created_at") or t.get("date")
+               or t.get("time") or "")
+    if not created:                              # "Latest" => essentially now
+        created = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    # Engagement lives either at the top level or inside a "counts" object.
+    counts = t.get("counts") if isinstance(t.get("counts"), dict) else {}
+    likes = (t.get("likeCount") or t.get("likes") or t.get("favoriteCount")
+             or counts.get("likes") or counts.get("favorites")
+             or counts.get("likeCount") or 0)
+    return {
+        "id": tweet_id,
+        "created_at": created,
+        "text": t.get("text") or t.get("fullText") or t.get("content") or "",
+        "author": str(handle),
+        "likes": likes,
+    }
+
+
+def fetchlayer_search(key, query, count):
+    r = requests.post(FETCHLAYER_URL,
+                      headers={"Authorization": f"Bearer {key}",
+                               "Content-Type": "application/json"},
+                      json={"query": query, "product": "Latest", "count": count},
+                      timeout=30)
+    return r
+
+
+def fetchlayer_test(key):
+    """ONE call, prints what came back, writes nothing (a few credits)."""
+    query = "($NVDA OR $TSLA OR $GME) lang:en -is:retweet"
+    print(f"POST twitter/search(product=Latest, count=5)\n  query: {query}")
+    r = fetchlayer_search(key, query, 5)
+    print(f"-> HTTP {r.status_code}")
+    if r.status_code != 200:
+        print(r.text[:300])
+        return 1
+    payload = r.json()
+    results = (payload.get("results") or payload.get("tweets")
+               or payload.get("data") or [])
+    print(f"got {len(results)} tweets; sample fields: "
+          f"{sorted(results[0].keys())[:12] if results else '-'}")
+    for t in results[:5]:
+        row = _fl_row(t)
+        if row:
+            print(f"  {str(row['likes']):>5} likes | @{row['author']:<15} | "
+                  f"{row['text'][:60]}")
+    print("TEST PASSED - FetchLayer X search works.")
+    return 0
+
+
+def fetchlayer_poll(key, max_tweets):
+    rows, used = [], 0
+    per_chunk = min(PAGE_SIZE, max(10, max_tweets))
+    for query in build_queries():
+        if len(rows) >= max_tweets:
+            break
+        try:
+            r = fetchlayer_search(key, query, per_chunk)
+        except Exception as exc:
+            print(f"[warn] query failed: {exc}")
+            continue
+        used += 1
+        if r.status_code in (402, 429):
+            print(f"[stop] FetchLayer says {r.status_code} (credits/rate) - "
+                  "ending run; next run continues")
+            break
+        if r.status_code != 200:
+            print(f"[warn] query {r.status_code}: {r.text[:120]}")
+            continue
+        payload = r.json()
+        results = (payload.get("results") or payload.get("tweets")
+                   or payload.get("data") or [])
+        for t in results:
+            row = _fl_row(t)
+            if row:
+                rows.append(row)
+        time.sleep(PAUSE_S)
+    print(f"fetchlayer: {used} credits used this run")
+    return rows[:max_tweets]
+
+
+# ---------------- backend B: official v2 API ----------------
+def official_poll(token, max_tweets):
     headers = {"Authorization": f"Bearer {token}"}
     rows = []
     for query in build_queries():
@@ -118,7 +237,8 @@ def fetch(token: str, max_tweets: int) -> list[dict]:
     return rows
 
 
-def append_to_raw(rows: list[dict]) -> None:
+# ---------------- shared: raw append ----------------
+def append_to_raw(rows):
     """Append new tweets to the registered raw file, deduping on id."""
     new = pd.DataFrame(rows)
     if os.path.exists(OUT_FILE):
@@ -134,24 +254,44 @@ def append_to_raw(rows: list[dict]) -> None:
 
 
 def main():
-    p = argparse.ArgumentParser(description="Live X ingestion (official v2 API)")
+    p = argparse.ArgumentParser(description="Live X ingestion (FetchLayer or official v2 API)")
+    p.add_argument("--test", action="store_true",
+                   help="ONE small call, prints the tweets, writes nothing")
     p.add_argument("--max-tweets", type=int, default=300,
-                   help="budget cap per run - protect your monthly read quota")
+                   help="budget cap per run")
     args = p.parse_args()
 
-    token = get_token()
-    if not token:
-        print("X live ingestion is ARMED but OFF: no X_BEARER_TOKEN in .env.")
-        print("When you pay for API access (developer.x.com), paste the")
-        print("bearer token into .env and re-run - nothing else changes.")
+    env = load_env()
+    if env["FETCHLAYER_API_KEY"]:
+        backend = "fetchlayer"
+    elif env["X_BEARER_TOKEN"]:
+        backend = "official"
+    else:
+        print("X live ingestion is OFF: no FETCHLAYER_KEY or X_BEARER_TOKEN in .env.")
+        print("  Easiest: add  FETCHLAYER_KEY = <your key from fetchlayer.dev>")
+        print("           (the same key the Reddit fetcher uses - no paid X account needed)")
+        print("  Or pay for X API access and set  X_BEARER_TOKEN = <bearer token>")
         return 0
+    print(f"backend: {backend}")
 
-    rows = fetch(token, args.max_tweets)
+    if args.test:
+        if backend == "fetchlayer":
+            return fetchlayer_test(env["FETCHLAYER_API_KEY"])
+        rows = official_poll(env["X_BEARER_TOKEN"], max_tweets=5)
+        for row in rows[:5]:
+            print(f"  {str(row['likes']):>5} likes | @{row['author']} | {row['text'][:60]}")
+        print("TEST PASSED" if rows else "TEST FAILED - see messages above")
+        return 0 if rows else 1
+
+    rows = (fetchlayer_poll(env["FETCHLAYER_API_KEY"], args.max_tweets)
+            if backend == "fetchlayer"
+            else official_poll(env["X_BEARER_TOKEN"], args.max_tweets))
     if not rows:
         print("no tweets fetched this run")
         return 0
     append_to_raw(rows)
-    print("next: python data_ingestion/scripts/add_x_data.py  (merges into posts.parquet)")
+    print("raw accumulates here; merge into posts.parquet is the next pipeline "
+          "step:  python data_ingestion/scripts/merge_live.py")
     return 0
 
 
