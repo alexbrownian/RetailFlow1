@@ -1,0 +1,5 @@
+[14:10:53] === daily run started ===
+[14:10:53] RUN  C:\Python312\python.exe data_ingestion/scripts/fetch_stocktwits.py
+[14:11:51] RUN  C:\Python312\python.exe data_ingestion/scripts/fetch_x_live.py
+[14:11:52] RUN  C:\Python312\python.exe C:\Users\alexd\Desktop\GIC\RetailFlow1\data_ingestion\scripts\fetch_reddit_live.py
+[14:11:52] === fetch-only run finished (no merge/compute/snapshot) - run check_live_ingestion.py to see what landed ===

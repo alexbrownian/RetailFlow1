@@ -17,7 +17,7 @@
 # that is the ground truth for calibrating our VADER sentiment (see
 # data_ingestion/LIVE_INGESTION.md).
 #
-# Run:  python data_ingestion/scripts/fetch_stocktwits.py
+# Run:  python api_calls/fetch_stocktwits.py
 #       (--symbols GME,NVDA,GLD  to override the default list)
 
 import argparse
@@ -31,7 +31,7 @@ import requests
 import zstandard
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(THIS_DIR))
+PROJECT_ROOT = os.path.dirname(THIS_DIR)
 sys.path.insert(0, PROJECT_ROOT)
 
 from src.themes import THEME_ETFS, THEME_TICKERS  # noqa: E402

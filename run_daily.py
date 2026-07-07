@@ -5,15 +5,18 @@
 # new numbers. This is what the Task Scheduler job (or the dashboard's
 # refresh button) runs every day.
 #
-#   python run_daily.py            # full run
-#   python run_daily.py --dry-run  # print the plan, execute nothing
+#   python run_daily.py                # full run
+#   python run_daily.py --fetch-only   # FETCH LAYER ONLY: call every source
+#                                      #   that has credentials, skip the rest
+#                                      #   gracefully, write raw files, stop
+#   python run_daily.py --dry-run      # print the plan, execute nothing
 #   python run_daily.py --skip-fetch   # recompute only (no API calls)
 #
 # WHAT IT DOES, IN ORDER:
-#   1. FETCH  - every live source that is currently enabled:
-#                 StockTwits (no key needed - always runs)
-#                 X official API (only if X_BEARER_TOKEN is in .env)
-#                 Reddit PRAW (only once fetch_reddit_live.py exists + keys)
+#   1. FETCH  - runs api_calls/fetch_all.py, THE one file for API calls:
+#               it checks .env first and calls only the sources whose keys
+#               are filled (empty key = ignored entirely). You can also run
+#               it directly:  python api_calls/fetch_all.py
 #   2. MERGE  - add_x_data.py rebuilds the X block of posts.parquet if the
 #               live X raw file changed since the parquet was written.
 #   3. COMPUTE - executes the notebooks IN PLACE, in chain order:
@@ -55,11 +58,14 @@ def log(msg, fh=None):
         fh.write(line + "\n"); fh.flush()
 
 
-def run(cmd, fh, dry):
+def run(cmd, fh, dry, show=False):
     log("RUN  " + " ".join(cmd), fh)
     if dry:
         return 0
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    if show and r.stdout:                       # echo the child's own output
+        for line in r.stdout.strip().splitlines():
+            log("  | " + line, fh)
     if r.returncode != 0:
         log("FAIL " + (r.stderr or r.stdout)[-800:], fh)
     return r.returncode
@@ -69,6 +75,9 @@ def main():
     p = argparse.ArgumentParser(description="Daily pipeline run")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--skip-fetch", action="store_true")
+    p.add_argument("--fetch-only", action="store_true",
+                   help="run the fetch layer only (each source self-skips "
+                        "if its key is missing), then stop")
     args = p.parse_args()
     dry = args.dry_run
 
@@ -80,17 +89,16 @@ def main():
 
     py = sys.executable
 
-    # ---- 1. FETCH ----
+    # ---- 1. FETCH: one file owns it all (key check + calls) ----
     if not args.skip_fetch:
-        run([py, "data_ingestion/scripts/fetch_stocktwits.py"], fh, dry)
-        run([py, "data_ingestion/scripts/fetch_x_live.py"], fh, dry)  # no-op without token
-        reddit_live = os.path.join(ROOT, "data_ingestion", "scripts", "fetch_reddit_live.py")
-        if os.path.exists(reddit_live):
-            run([py, reddit_live], fh, dry)
-        else:
-            log("skip reddit (fetch_reddit_live.py not built yet)", fh)
+        run([py, "api_calls/fetch_all.py"], fh, dry, show=True)
     else:
         log("fetch skipped (--skip-fetch)", fh)
+
+    if args.fetch_only:
+        log("=== fetch-only run finished (no merge/compute/snapshot) - "
+            "run check_live_ingestion.py to see what landed ===", fh)
+        return 0
 
     # ---- 2. MERGE (only if live X raw is newer than the parquet) ----
     posts = os.path.join(ROOT, "data", "processed", "posts.parquet")

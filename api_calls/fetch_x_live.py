@@ -6,8 +6,8 @@
 # with ZERO other changes:
 #
 #     .env:  X_BEARER_TOKEN = AAAA....           (from developer.x.com)
-#     python data_ingestion/scripts/fetch_x_live.py      (on a schedule)
-#     python data_ingestion/scripts/add_x_data.py        (rebuilds X block)
+#     python api_calls/fetch_x_live.py                    (on a schedule)
+#     python data_ingestion/scripts/add_x_data.py         (rebuilds X block)
 #
 # It appends tweets to data/raw/X Data/x_api_live.csv.zst - which is a
 # registered dataset in src/x_data.py (normalise_x_api), so add_x_data.py
@@ -28,7 +28,7 @@
 #     Basic ~ run 2-3x/day with a 150-tweet cap; Pro ~ hourly is fine.
 #   - On HTTP 429 the script stops immediately; the next run catches up.
 #
-# Run: python data_ingestion/scripts/fetch_x_live.py [--max-tweets 300]
+# Run: python api_calls/fetch_x_live.py [--max-tweets 300]
 
 import argparse
 import io
@@ -41,7 +41,7 @@ import requests
 import zstandard
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(THIS_DIR))
+PROJECT_ROOT = os.path.dirname(THIS_DIR)
 sys.path.insert(0, PROJECT_ROOT)
 
 from src.themes import THEME_ETFS  # noqa: E402
@@ -53,14 +53,16 @@ PAUSE_S = 3.0            # polite gap between requests
 
 
 def get_token() -> str | None:
-    token = os.environ.get("X_BEARER_TOKEN")
-    if not token:
-        try:
-            from dotenv import load_dotenv
-            load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
-            token = os.environ.get("X_BEARER_TOKEN")
-        except ImportError:
-            pass
+    """os.environ first, then .env read by hand (no python-dotenv needed)."""
+    token = os.environ.get("X_BEARER_TOKEN", "")
+    env_path = os.path.join(PROJECT_ROOT, ".env")
+    if not token and os.path.exists(env_path):
+        for line in open(env_path, encoding="utf-8"):
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                if k.strip() == "X_BEARER_TOKEN" and v.strip():
+                    token = v.strip()
     return token or None
 
 

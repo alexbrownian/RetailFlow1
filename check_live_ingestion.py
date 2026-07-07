@@ -53,7 +53,7 @@ if st_files:
           f"({n_lines:,} raw messages)")
 else:
     print("StockTwits : [MISSING] no raw files - run "
-          "data_ingestion/scripts/fetch_stocktwits.py")
+          "python api_calls/fetch_all.py")
 
 x_live = os.path.join(ROOT, "data", "raw", "X Data", "x_api_live.csv.zst")
 if os.path.exists(x_live):
@@ -65,11 +65,17 @@ else:
     print("X live     : [OK - armed, off] no X_BEARER_TOKEN paid/set yet "
           "(expected until you subscribe)")
 
-reddit_live = os.path.join(ROOT, "data_ingestion", "scripts", "fetch_reddit_live.py")
-print("Reddit live: " + ("[OK] fetcher exists - see dataset layer below"
-                         if os.path.exists(reddit_live)
-                         else "[NOT BUILT] fetch_reddit_live.py doesn't exist yet - "
-                              "the core live source is still pending"))
+rl_files = sorted(glob.glob(os.path.join(ROOT, "data", "raw", "RedditLive", "*.jsonl.zst")))
+if rl_files:
+    latest = rl_files[-1]
+    blob = zstandard.ZstdDecompressor().decompress(open(latest, "rb").read())
+    day = os.path.basename(latest).replace("reddit_live_", "").replace(".jsonl.zst", "")
+    print(f"Reddit live: {verdict(day)} latest file {os.path.basename(latest)} "
+          f"({blob.count(chr(10).encode()):,} raw posts)")
+else:
+    print("Reddit live: [NO DATA YET] fetcher is built - verify with "
+          "'python api_calls/test_fetchlayer.py', then run "
+          "'python api_calls/fetch_all.py' to start accumulating")
 
 # ---- 2. DATASET layer ----
 section("2. DATASET - posts.parquet, newest post per source")

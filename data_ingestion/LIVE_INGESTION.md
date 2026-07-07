@@ -11,7 +11,7 @@ exactly how to wire live sources when the time comes._
 | Element | Their approach | Our verdict |
 |---|---|---|
 | **Sentiment engine** | FinTwitBERT-sentiment (a BERT fine-tuned on finance tweets, 3 labels bullish/neutral/bearish) | **KEPT VADER+WSB for the historical backfill, ADOPT FinTwitBERT for live** (see below — this is a volume argument, not a quality argument) |
-| **StockTwits** | Polls public JSON endpoints, no key needed | **ADOPTED** — `fetch_stocktwits.py` + `src/stocktwits_data.py`. Killer feature: users label their OWN posts Bullish/Bearish → free ground truth to calibrate our lexicon against |
+| **StockTwits** | Polls public JSON endpoints, no key needed | **ADOPTED** — `api_calls/fetch_stocktwits.py` + `src/stocktwits_data.py`. Killer feature: users label their OWN posts Bullish/Bearish → free ground truth to calibrate our lexicon against |
 | **Discord** | Full bot account posting embeds to channels (their whole UI) | **REJECTED (2026-07-06)** — our output is the Streamlit DASHBOARD only, which now includes a Signals panel showing notebook 10's BUY/SELL decisions with reasons. (Also: fintwit-bot does NOT ingest FROM Discord, and neither do we — reading other people's servers has consent/ToS problems) |
 | **Reddit ingestion** | asyncpraw, `@loop(hours=12)`, keeps seen-ids for 72h then forgets | **ADOPT the PRAW pattern, KEEP our dedup**: their 72h id memory can re-ingest an old post that resurfaces; our "first seen wins" against the full parquet id set is strictly safer |
 | **X / Twitter** | No official API — a logged-in session's cURL (`curl.txt`) replays the HomeLatestTimeline request | **DOCUMENTED, NOT ADOPTED (yet)** — it works but is fragile (breaks when X changes internals) and violates X ToS; weigh that before using. Our frozen HF dumps stay the historical X source |
@@ -40,16 +40,22 @@ it beats VADER on that ground truth. (`author_label()` in
 
 ## Where API keys live
 
-**All credentials go in `.env` at the project root** (copy `example.env`
-→ `.env` and fill it in). `.env` and `curl.txt` are git-ignored — keys
-never appear in code, notebooks, or commits. Scripts read them via
-`os.environ` (with optional `python-dotenv` loading).
+**All credentials go in `.env` at the project root.** `.env` and
+`curl.txt` are git-ignored — keys never appear in code, notebooks, or
+commits. Scripts parse `.env` directly (plain Python, no `python-dotenv`
+needed), with `os.environ` as a fallback.
+
+**All live fetchers live in `api_calls/` — run ONE file:**
+`python api_calls/fetch_all.py`. It checks `.env` first and calls only
+the sources whose keys are filled (empty key = source ignored, no request
+sent). `--check` prints the key check without calling anything.
 
 | Credential | Used by | How to get it |
 |---|---|---|
-| `REDDIT_APP_NAME`, `REDDIT_PERSONAL_USE`, `REDDIT_SECRET`, `REDDIT_USERNAME`, `REDDIT_PASSWORD` | future `fetch_reddit_live.py` (PRAW) | https://old.reddit.com/prefs/apps/ → create app, type **script** → the id under the name = PERSONAL_USE, the secret = SECRET. Consider a dedicated account |
-| StockTwits | `fetch_stocktwits.py` | none needed (public read-only streams) |
-| `X_BEARER_TOKEN` | `fetch_x_live.py` (official v2 API — **pipeline armed, off until you pay**) | developer.x.com → sign up for a paid tier → Projects & Apps → your app → Bearer Token. Paste into `.env`; the fetcher detects it automatically |
+| `FETCHLAYER_KEY` | `api_calls/fetch_reddit_live.py` (preferred Reddit backend) | fetchlayer.dev dashboard → copy key into `.env`. 1 credit per request; test with `python api_calls/test_fetchlayer.py` (1 credit) |
+| `REDDIT_APP_NAME`, `REDDIT_PERSONAL_USE`, `REDDIT_SECRET`, `REDDIT_USERNAME`, `REDDIT_PASSWORD` | `api_calls/fetch_reddit_live.py` (official fallback backend) | https://old.reddit.com/prefs/apps/ → create app, type **script** → the id under the name = PERSONAL_USE, the secret = SECRET. Consider a dedicated account |
+| StockTwits | `api_calls/fetch_stocktwits.py` | none needed (public read-only streams) |
+| `X_BEARER_TOKEN` | `api_calls/fetch_x_live.py` (official v2 API — **pipeline armed, off until you pay**) | developer.x.com → sign up for a paid tier → Projects & Apps → your app → Bearer Token. Paste into `.env`; the fetcher detects it automatically |
 | X (unofficial) | not built | the curl.txt session-replay trick — fragile + ToS risk, see above |
 
 ### X official API — what paying gets you, and the quota maths
