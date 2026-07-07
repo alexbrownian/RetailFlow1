@@ -1,0 +1,131 @@
+# check_freshness.py
+# ==================
+# THE live-data smoke test: one command that tells you, layer by layer,
+# whether fresh data is actually flowing through the pipeline - and where
+# it stops if not. Run it any time (it changes nothing):
+#
+#     python check_freshness.py
+#
+# It checks the four layers in flow order:
+#   1. FETCH    - are the raw live files growing? (StockTwits daily file,
+#                 x_api_live.csv.zst)
+#   2. DATASET  - what is the newest post date in posts.parquet, per source?
+#   3. DERIVED  - how fresh are the notebook outputs (counts, sentiment,
+#                 signals)?
+#   4. RECORD   - do we have today's signal snapshot and pipeline log?
+#
+# Verdicts: [LIVE] = data within 2 days of today; [OK] = expected state;
+# [STALE]/[MISSING] = investigate (the message says what to run).
+
+import datetime
+import glob
+import io
+import os
+
+import pandas as pd
+import pyarrow.parquet as pq
+import zstandard
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
+TODAY = datetime.date.today()
+
+
+def verdict(day_str):
+    if not day_str:
+        return "[MISSING]"
+    age = (TODAY - datetime.date.fromisoformat(str(day_str)[:10])).days
+    return f"[LIVE +{age}d ago]" if age <= 2 else f"[STALE {age}d old]"
+
+
+def section(title):
+    print("\n" + title + "\n" + "-" * len(title))
+
+
+# ---- 1. FETCH layer ----
+section("1. FETCH - raw live files")
+st_files = sorted(glob.glob(os.path.join(ROOT, "data", "raw", "StockTwits", "*.jsonl.zst")))
+if st_files:
+    latest = st_files[-1]
+    blob = zstandard.ZstdDecompressor().decompress(open(latest, "rb").read())
+    n_lines = blob.count(b"\n")
+    day = os.path.basename(latest).replace("stocktwits_", "").replace(".jsonl.zst", "")
+    print(f"StockTwits : {verdict(day)} latest file {os.path.basename(latest)} "
+          f"({n_lines:,} raw messages)")
+else:
+    print("StockTwits : [MISSING] no raw files - run "
+          "data_ingestion/scripts/fetch_stocktwits.py")
+
+x_live = os.path.join(ROOT, "data", "raw", "X Data", "x_api_live.csv.zst")
+if os.path.exists(x_live):
+    blob = zstandard.ZstdDecompressor().decompress(open(x_live, "rb").read())
+    df = pd.read_csv(io.BytesIO(blob))
+    newest = str(df["created_at"].max())[:10] if len(df) else None
+    print(f"X live     : {verdict(newest)} {len(df):,} tweets accumulated")
+else:
+    print("X live     : [OK - armed, off] no X_BEARER_TOKEN paid/set yet "
+          "(expected until you subscribe)")
+
+reddit_live = os.path.join(ROOT, "data_ingestion", "scripts", "fetch_reddit_live.py")
+print("Reddit live: " + ("[OK] fetcher exists - see dataset layer below"
+                         if os.path.exists(reddit_live)
+                         else "[NOT BUILT] fetch_reddit_live.py doesn't exist yet - "
+                              "the core live source is still pending"))
+
+# ---- 2. DATASET layer ----
+section("2. DATASET - posts.parquet, newest post per source")
+posts = os.path.join(ROOT, "data", "processed", "posts.parquet")
+if not os.path.exists(posts):
+    print("[MISSING] posts.parquet - run the ingestion scripts")
+else:
+    try:
+        cols = pq.ParquetFile(posts).schema_arrow.names
+        read_cols = ["date"] + (["source"] if "source" in cols else [])
+        t = pq.read_table(posts, columns=read_cols).to_pandas()
+        if "source" in t.columns:
+            for src_name, grp in t.groupby("source"):
+                print(f"{src_name:<11}: {verdict(grp['date'].max())} "
+                      f"newest post {grp['date'].max()}")
+        else:
+            print(f"all        : {verdict(t['date'].max())} newest post {t['date'].max()}")
+        print("(raw StockTwits does NOT merge into the parquet yet - it accumulates "
+              "for sentiment calibration; X merges via add_x_data.py once live.)")
+    except Exception as exc:
+        print(f"[UNREADABLE] posts.parquet could not be opened ({exc}).")
+        print("If a merge/swap is mid-flight or another program holds the file,")
+        print("close it and re-run this check.")
+
+# ---- 3. DERIVED layer ----
+section("3. DERIVED - notebook outputs")
+for label, fname, date_col in [
+        ("counts (02)   ", "daily_ticker_counts.parquet", "date"),
+        ("tick sent (06)", "daily_ticker_sentiment.parquet", "date"),
+        ("theme sent(07)", "daily_theme_sentiment.parquet", "date"),
+        ("signals (09)  ", "trade_signals.parquet", "signal_date")]:
+    path = os.path.join(ROOT, "data", "processed", fname)
+    if not os.path.exists(path):
+        print(f"{label}: [MISSING] - run the notebook / run_daily.py")
+        continue
+    try:
+        df = pd.read_parquet(path)
+        newest = str(df[date_col].max())[:10] if len(df) else None
+        mtime = datetime.datetime.fromtimestamp(os.path.getmtime(path)).strftime("%m-%d %H:%M")
+        print(f"{label}: {verdict(newest)} newest row {newest} (file written {mtime})")
+    except Exception as exc:
+        print(f"{label}: [UNREADABLE] ({str(exc)[:60]}...) - file busy or mid-write")
+
+# ---- 4. RECORD layer ----
+section("4. RECORD - snapshots & logs")
+snaps = sorted(glob.glob(os.path.join(ROOT, "data", "processed",
+                                      "signal_snapshots", "*.parquet")))
+print(f"snapshots  : {len(snaps)} files"
+      + (f", latest {os.path.basename(snaps[-1])}" if snaps else
+         " - none yet (run_daily.py creates them)"))
+logs = sorted(glob.glob(os.path.join(ROOT, "logs", "run_*.log")))
+if logs:
+    tail = open(logs[-1], encoding="utf-8").read().strip().splitlines()[-1]
+    print(f"last log   : {os.path.basename(logs[-1])} | last line: {tail}")
+else:
+    print("last log   : none - run_daily.py has never run")
+
+print("\nRule of thumb: layer N stale but layer N-1 fresh => the step between "
+      "them didn't run. All [LIVE] => the dashboard chip will show LIVE too.")

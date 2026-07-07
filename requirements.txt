@@ -10,3 +10,4 @@ fsspec
 vaderSentiment
 joblib
 streamlit
+python-dotenv

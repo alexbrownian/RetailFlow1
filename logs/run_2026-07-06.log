@@ -1,0 +1,54 @@
+[14:29:43] === daily run started ===
+[14:29:43] RUN  /usr/bin/python data_ingestion/scripts/fetch_stocktwits.py
+[14:29:43] RUN  /usr/bin/python data_ingestion/scripts/fetch_x_live.py
+[14:29:43] skip reddit (fetch_reddit_live.py not built yet)
+[14:29:43] no new X raw - merge skipped
+[14:29:43] RUN  /usr/bin/python -m jupyter nbconvert --to notebook --execute --inplace notebooks/01_clean_data.ipynb --ExecutePreprocessor.timeout=3600
+[14:29:43] ok   01_clean_data
+[14:29:43] RUN  /usr/bin/python -m jupyter nbconvert --to notebook --execute --inplace notebooks/02_mentions_over_time.ipynb --ExecutePreprocessor.timeout=3600
+[14:29:43] ok   02_mentions_over_time
+[14:29:43] RUN  /usr/bin/python -m jupyter nbconvert --to notebook --execute --inplace notebooks/06_ticker_sentiment.ipynb --ExecutePreprocessor.timeout=3600
+[14:29:43] ok   06_ticker_sentiment
+[14:29:43] RUN  /usr/bin/python -m jupyter nbconvert --to notebook --execute --inplace notebooks/07_theme_sentiment.ipynb --ExecutePreprocessor.timeout=3600
+[14:29:43] ok   07_theme_sentiment
+[14:29:43] RUN  /usr/bin/python -m jupyter nbconvert --to notebook --execute --inplace notebooks/09_trading_signals.ipynb --ExecutePreprocessor.timeout=3600
+[14:29:43] ok   09_trading_signals
+[14:29:43] snapshot -> /sessions/affectionate-funny-lovelace/mnt/RetailFlow1/data/processed/signal_snapshots/2026-07-06_trade_signals.parquet
+[14:29:43] snapshot -> /sessions/affectionate-funny-lovelace/mnt/RetailFlow1/data/processed/signal_snapshots/2026-07-06_trade_signals_tickers.parquet
+[14:29:43] === daily run finished - open the dashboard ===
+[14:33:33] === daily run started ===
+[14:33:33] RUN  C:\Python312\python.exe data_ingestion/scripts/fetch_stocktwits.py
+[14:34:30] RUN  C:\Python312\python.exe data_ingestion/scripts/fetch_x_live.py
+[14:34:32] skip reddit (fetch_reddit_live.py not built yet)
+[14:34:32] no new X raw - merge skipped
+[14:34:32] RUN  C:\Python312\python.exe -m jupyter nbconvert --to notebook --execute --inplace notebooks/01_clean_data.ipynb --ExecutePreprocessor.timeout=3600
+[14:35:05] ok   01_clean_data
+[14:35:05] RUN  C:\Python312\python.exe -m jupyter nbconvert --to notebook --execute --inplace notebooks/02_mentions_over_time.ipynb --ExecutePreprocessor.timeout=3600
+[14:35:44] ok   02_mentions_over_time
+[14:35:44] RUN  C:\Python312\python.exe -m jupyter nbconvert --to notebook --execute --inplace notebooks/06_ticker_sentiment.ipynb --ExecutePreprocessor.timeout=3600
+[14:36:03] ok   06_ticker_sentiment
+[14:36:03] RUN  C:\Python312\python.exe -m jupyter nbconvert --to notebook --execute --inplace notebooks/07_theme_sentiment.ipynb --ExecutePreprocessor.timeout=3600
+[14:36:39] ok   07_theme_sentiment
+[14:36:39] RUN  C:\Python312\python.exe -m jupyter nbconvert --to notebook --execute --inplace notebooks/09_trading_signals.ipynb --ExecutePreprocessor.timeout=3600
+[14:36:51] ok   09_trading_signals
+[14:36:51] snapshot -> C:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-06_trade_signals.parquet
+[14:36:51] snapshot -> C:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-06_trade_signals_tickers.parquet
+[14:36:51] === daily run finished - open the dashboard ===
+[14:48:09] === daily run started ===
+[14:48:09] RUN  C:\Python312\python.exe data_ingestion/scripts/fetch_stocktwits.py
+[14:49:05] RUN  C:\Python312\python.exe data_ingestion/scripts/fetch_x_live.py
+[14:49:06] skip reddit (fetch_reddit_live.py not built yet)
+[14:49:06] no new X raw - merge skipped
+[14:49:06] RUN  C:\Python312\python.exe -m jupyter nbconvert --to notebook --execute --inplace notebooks/01_clean_data.ipynb --ExecutePreprocessor.timeout=3600
+[14:49:32] ok   01_clean_data
+[14:49:32] RUN  C:\Python312\python.exe -m jupyter nbconvert --to notebook --execute --inplace notebooks/02_mentions_over_time.ipynb --ExecutePreprocessor.timeout=3600
+[14:50:13] ok   02_mentions_over_time
+[14:50:13] RUN  C:\Python312\python.exe -m jupyter nbconvert --to notebook --execute --inplace notebooks/06_ticker_sentiment.ipynb --ExecutePreprocessor.timeout=3600
+[14:50:30] ok   06_ticker_sentiment
+[14:50:30] RUN  C:\Python312\python.exe -m jupyter nbconvert --to notebook --execute --inplace notebooks/07_theme_sentiment.ipynb --ExecutePreprocessor.timeout=3600
+[14:51:05] ok   07_theme_sentiment
+[14:51:05] RUN  C:\Python312\python.exe -m jupyter nbconvert --to notebook --execute --inplace notebooks/09_trading_signals.ipynb --ExecutePreprocessor.timeout=3600
+[14:51:16] ok   09_trading_signals
+[14:51:16] snapshot -> C:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-06_trade_signals.parquet
+[14:51:16] snapshot -> C:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-06_trade_signals_tickers.parquet
+[14:51:16] === daily run finished - open the dashboard ===

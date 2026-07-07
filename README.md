@@ -44,8 +44,11 @@ RetailFlow1/
 │   ├── raw/         <-- the 15 downloaded .zst dumps (see data/README.md)
 │   ├── processed/   <-- posts.parquet = THE dataset + notebook outputs
 │   └── reference/   <-- Nasdaq ticker list + ticker_classification.csv
+├── example.env              # template for API keys (copy to .env - git-ignored)
 ├── data_ingestion/
 │   ├── README.md            # how to (re-)download dumps + rebuild the dataset
+│   ├── LIVE_INGESTION.md    # THE live-data playbook: keys, rate limits, cadences,
+│   │                        #   fintwit-bot adopt/keep verdicts, StockTwits, alerts
 │   ├── finance_subreddits.txt
 │   └── scripts/
 │       ├── prep_posts.py        # raw Reddit dumps -> posts.parquet (filters + dedup)
@@ -63,9 +66,11 @@ RetailFlow1/
 │   ├── 05_theme_first_derivative.ipynb
 │   ├── 06_ticker_sentiment.ipynb    # VADER+WSB lexicon, per-ticker long/short lean
 │   ├── 07_theme_sentiment.ipynb     # JPM-style theme sentiment chart + monitor
-│   ├── 08_retail_conviction.ipynb   # mentions x sentiment: conviction z, heatmaps,
-│   │                                #   divergence flags, snail trails
-│   └── 09_trading_signals.ipynb     # WHAT the model would BUY, when, with what
+│   ├── 08_ticker_conviction.ipynb   # per-TICKER mentions x sentiment: conviction z,
+│   │                                #   heatmaps, divergence flags, snail trails
+│   ├── 09_theme_conviction.ipynb    # the same conviction analysis per THEME
+│   │                                #   (ETF-anchored buckets from src/themes.py)
+│   └── 10_trading_signals.ipynb     # WHAT the model would BUY, when, with what
 │                                    #   conviction (0-5) - live-parity trailing
 │                                    #   baselines; becomes the daily run when
 │                                    #   live ingestion lands

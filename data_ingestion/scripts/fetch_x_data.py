@@ -75,6 +75,8 @@ def main():
     for key, spec in DATASETS.items():
         if args.only and key != args.only:
             continue
+        if not spec.get("repo"):
+            continue   # live entries (x_api_live) are fed by fetch_x_live.py
         fetch_one(key, spec["repo"])
 
     print("\nnext: python data_ingestion/scripts/add_x_data.py")
