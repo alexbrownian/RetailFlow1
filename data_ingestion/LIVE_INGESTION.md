@@ -121,9 +121,9 @@ Daily-run rules (all cross-referenced in the README live-data checklist):
 5. Watch the pinned tests: totals move on every ingestion (update
    deliberately), and the date assertion needs bumping past 2026.
 
-## Automation: run_daily.py + Task Scheduler + the dashboard button
+## Automation: update_data.py + Task Scheduler + the dashboard button
 
-`run_daily.py` (project root) is the one-command orchestrator:
+`update_data.py` (project root) is the one-command orchestrator:
 fetch enabled sources → merge if new X raw exists → execute the notebook
 chain **in place** (01→02→06→07→09, so the notebooks always hold fresh
 outputs) → snapshot `trade_signals*.parquet` to
@@ -137,29 +137,12 @@ history depth, e.g. '2023-10-01').
 
 **Schedule it daily** (Windows): Task Scheduler → Create Basic Task →
 Daily 06:30 → Start a Program →
-`Program: python`, `Arguments: run_daily.py`,
+`Program: python`, `Arguments: update_data.py`,
 `Start in: C:\Users\alexd\Desktop\GIC\RetailFlow1`. Or from PowerShell:
 
 ```powershell
 schtasks /Create /SC DAILY /ST 06:30 /TN "RetailFlow daily" ^
-  /TR "python C:\Users\alexd\Desktop\GIC\RetailFlow1\run_daily.py"
+  /TR "python C:\Users\alexd\Desktop\GIC\RetailFlow1\update_data.py"
 ```
 
-**Or push the button:** the dashboard sidebar has "🔄 Run daily pipeline
-now" — it runs the same script, then clears caches and reloads, so fresh
-signals appear in the Signals panel the moment it finishes. (Close Jupyter
-kernels first if a merge is due — Windows file locks.)
-
-## Adding StockTwits (or any new source) to the dataset
-
-Same recipe as the X datasets — one normaliser + one registry entry:
-1. Raw fetcher appends to `data/raw/<Source>/...` (immutable, git-ignored).
-2. Normaliser maps to the 9-column schema with a distinct `source` value
-   and a collision-proof id prefix (`st_` for StockTwits) —
-   `src/stocktwits_data.py` is ready.
-3. Merge step unions it into `posts.parquet` —
-   `data_ingestion/scripts/merge_live.py` appends every live source
-   (Reddit, X, StockTwits) with the "first seen wins" id dedup. Add a
-   `collect_*` helper there for a brand-new source.
-4. Everything downstream (screening, counts, sentiment, signals,
-   dashboard) works unchanged — that is the whole point of the schema.
+**Or push the button:** the dashboard side

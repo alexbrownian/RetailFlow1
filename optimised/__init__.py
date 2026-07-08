@@ -7,7 +7,7 @@ imports from here instead of depending on notebook outputs for its charts.
 
 Division of labour (why this is fast):
   - The HEAVY, slow steps (ticker extraction, sentiment scoring) still run
-    in the pipeline (run_daily.py -> notebooks 01/02/06/07) and land in
+    in the pipeline (update_data.py -> notebooks 01/02/06/07) and land in
     small daily parquets. Nothing here re-does them.
   - THIS package does the light maths (rolling sums, trailing z-scores,
     pivots) on those small daily tables - fully vectorised pandas, no
@@ -26,4 +26,4 @@ Keep any logic change mirrored in both, or better: change it here and
 import it from the notebook.
 """
 
-from . import data, metrics, charts  # noqa: F401
+from . import data, me

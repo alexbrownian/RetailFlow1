@@ -94,7 +94,7 @@ else:
         else:
             print(f"all        : {verdict(t['date'].max())} newest post {t['date'].max()}")
         print("(live Reddit, X and StockTwits raw all APPEND into posts.parquet via "
-              "merge_live.py - run it, or run_daily.py / fetch_all.py, to pull them in.)")
+              "merge_live.py - run it, or update_data.py / fetch_all.py, to pull them in.)")
     except Exception as exc:
         print(f"[UNREADABLE] posts.parquet could not be opened ({exc}).")
         print("If a merge/swap is mid-flight or another program holds the file,")
@@ -109,7 +109,7 @@ for label, fname, date_col in [
         ("signals (09)  ", "trade_signals.parquet", "signal_date")]:
     path = os.path.join(ROOT, "data", "processed", fname)
     if not os.path.exists(path):
-        print(f"{label}: [MISSING] - run the notebook / run_daily.py")
+        print(f"{label}: [MISSING] - run the notebook / update_data.py")
         continue
     try:
         df = pd.read_parquet(path)
@@ -125,13 +125,5 @@ snaps = sorted(glob.glob(os.path.join(ROOT, "data", "processed",
                                       "signal_snapshots", "*.parquet")))
 print(f"snapshots  : {len(snaps)} files"
       + (f", latest {os.path.basename(snaps[-1])}" if snaps else
-         " - none yet (run_daily.py creates them)"))
-logs = sorted(glob.glob(os.path.join(ROOT, "logs", "run_*.log")))
-if logs:
-    tail = open(logs[-1], encoding="utf-8").read().strip().splitlines()[-1]
-    print(f"last log   : {os.path.basename(logs[-1])} | last line: {tail}")
-else:
-    print("last log   : none - run_daily.py has never run")
-
-print("\nRule of thumb: layer N stale but layer N-1 fresh => the step between "
-      "them didn't run. All [LIVE] => the dashboard chip will show LIVE too.")
+         " - none yet (update_data.py creates them)"))
+logs = sorted(glob.glob(os.path.join(ROOT, "logs", "run_*.l

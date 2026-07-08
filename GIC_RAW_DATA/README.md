@@ -33,7 +33,7 @@ The pipeline already turns text into numbers at a fixed line:
 Run the normal chain once, then publish the aggregates here:
 
 ```bash
-python run_daily.py                     # (or run notebooks 01–07 by hand)
+python update_data.py                     # (or run notebooks 01–07 by hand)
 python -c "from src import gic_data; gic_data.export()"
 git add GIC_RAW_DATA && git commit -m "publish abstracted aggregates"
 ```
@@ -48,7 +48,7 @@ git pull                                        # get the latest GIC_RAW_DATA
 python -c "from src import gic_data; gic_data.hydrate()"   # -> data/processed
 python api_calls/fetch_all.py                   # fetch live raw (transient)
 python api_calls/append_live_to_gic.py          # fold new posts into GIC_RAW_DATA
-# then re-run notebooks 08/09/10 (or run_daily.py) and the dashboard
+# then re-run notebooks 08/09/10 (or update_data.py) and the dashboard
 git add GIC_RAW_DATA && git commit -m "live update"   # push the new days back
 ```
 

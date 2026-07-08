@@ -267,7 +267,7 @@ def main():
         print("!" * 68)
         return 1
     print("swapped in:", args.posts)
-    print("next: re-run the notebook chain (run_daily.py does this), then the dashboard.")
+    print("next: re-run the notebook chain (update_data.py does this), then the dashboard.")
     return 0
 
 

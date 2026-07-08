@@ -223,7 +223,7 @@ def main():
         print("\n--- hydrate GIC_RAW_DATA -> data/processed ---")
         gic_data.hydrate()
 
-    print("\ndone. next: re-run notebooks 08/09/10 (or run_daily.py) then the dashboard.")
+    print("\ndone. next: re-run notebooks 08/09/10 (or update_data.py) then the dashboard.")
     return 0
 
 

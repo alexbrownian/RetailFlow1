@@ -25,7 +25,7 @@
 #
 # NOTE ON MERGING: raw accumulates here; posts reach posts.parquet via
 # data_ingestion/scripts/merge_live.py (append-only, "first seen wins").
-# run_daily.py and `fetch_all.py` (normal mode) call it for you.
+# update_data.py and `fetch_all.py` (normal mode) call it for you.
 
 import argparse
 import datetime
@@ -262,10 +262,4 @@ def main():
     path = append_raw(fresh)
     save_seen(seen + [post_id(p) for p in fresh])
     print(f"kept {len(fresh)} NEW posts (of {len(posts)} fetched) -> {path}")
-    print("raw accumulates here; append into posts.parquet with:  "
-          "python data_ingestion/scripts/merge_live.py")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+    print("raw accumulates here; append into posts.p
