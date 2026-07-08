@@ -12,6 +12,10 @@
 #                                      #   gracefully, write raw files, stop
 #   python run_daily.py --dry-run      # print the plan, execute nothing
 #   python run_daily.py --skip-fetch   # recompute only (no API calls)
+#   python run_daily.py --consumer     # WORK LAPTOP: fetch -> fold into
+#                                      #   GIC_RAW_DATA -> hydrate -> run the
+#                                      #   consumer notebooks (08/09/10). No raw
+#                                      #   posts.parquet needed.
 #
 # WHAT IT DOES, IN ORDER:
 #   1. FETCH  - runs api_calls/fetch_all.py, THE one file for API calls:
@@ -56,8 +60,14 @@ except Exception:
 ROOT = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(ROOT, "logs")
 SNAP_DIR = os.path.join(ROOT, "data", "processed", "signal_snapshots")
+# PRODUCER chain (needs the raw posts.parquet): text -> numbers -> signals.
 NOTEBOOKS = ["01_clean_data", "02_mentions_over_time", "06_ticker_sentiment",
              "07_theme_sentiment", "10_trading_signals"]
+# CONSUMER chain (work laptop, --consumer): reads ONLY the text-free aggregates
+# in data/processed (put there by hydrate), so it needs no raw posts. Rebuilds
+# conviction + signals from the freshly appended GIC_RAW_DATA.
+CONSUMER_NOTEBOOKS = ["08_ticker_conviction", "09_theme_conviction",
+                      "10_trading_signals"]
 SIGNAL_FILES = ["trade_signals.parquet", "trade_signals_tickers.parquet"]
 
 # The history depth notebook 01 slices from. END is always OPEN for live
@@ -95,6 +105,10 @@ def main():
     p.add_argument("--fetch-only", action="store_true",
                    help="run the fetch layer only (each source self-skips "
                         "if its key is missing), then stop")
+    p.add_argument("--consumer", action="store_true",
+                   help="WORK-LAPTOP mode: fetch -> fold into GIC_RAW_DATA -> "
+                        "hydrate -> run the CONSUMER notebooks (08/09/10) only. "
+                        "No raw posts.parquet needed.")
     p.add_argument("--start-date", default=DEFAULT_START_DATE,
                    help=f"history depth notebook 01 slices from (default "
                         f"{DEFAULT_START_DATE}); the END is always open so the "
@@ -122,20 +136,34 @@ def main():
             "run check_live_ingestion.py to see what landed ===", fh)
         return 0
 
-    # ---- 2. MERGE: append EVERY live source (Reddit / X / StockTwits) into
-    #         posts.parquet. Append-only + idempotent, so it's safe to always
-    #         run - it appends nothing when there is nothing new. ----
-    log("merging live raw -> posts.parquet (close Jupyter first!)", fh)
-    if run([py, "data_ingestion/scripts/merge_live.py"], fh, dry, show=True) != 0:
-        log("merge failed - continuing with the existing parquet", fh)
+    # ---- 2. MERGE / APPEND: fold EVERY live source (Reddit / X / StockTwits)
+    #         into the right store. Append-only + idempotent either way, so it's
+    #         safe to always run - nothing new means nothing appended. ----
+    if args.consumer:
+        # Work laptop: no raw store. Fold into GIC_RAW_DATA (text-free) and
+        # hydrate GIC_RAW_DATA -> data/processed so the consumer notebooks find
+        # fresh aggregates. append_live_to_gic.py does both.
+        log("folding live raw -> GIC_RAW_DATA + hydrate (close Jupyter first!)", fh)
+        if run([py, "api_calls/append_live_to_gic.py"], fh, dry, show=True) != 0:
+            log("gic append failed - continuing with the existing aggregates", fh)
+    else:
+        log("merging live raw -> posts.parquet (close Jupyter first!)", fh)
+        if run([py, "data_ingestion/scripts/merge_live.py"], fh, dry, show=True) != 0:
+            log("merge failed - continuing with the existing parquet", fh)
 
     # ---- 3. COMPUTE: execute the notebook chain in place ----
-    # Notebook 01 reads these; END empty = open-ended so the window extends to
-    # the newest post. The child nbconvert processes inherit this environment.
-    os.environ["PIPELINE_START_DATE"] = args.start_date
-    os.environ["PIPELINE_END_DATE"] = ""      # empty => None => window stays open
-    log(f"notebook window: START_DATE={args.start_date}  END_DATE=open (extends to newest)", fh)
-    for nb in NOTEBOOKS:
+    # Producer runs the full chain from raw; consumer runs only 08/09/10 off the
+    # aggregates (no raw needed, so no window to set).
+    notebooks = CONSUMER_NOTEBOOKS if args.consumer else NOTEBOOKS
+    if not args.consumer:
+        # Notebook 01 reads these; END empty = open-ended so the window extends
+        # to the newest post. Child nbconvert processes inherit this environment.
+        os.environ["PIPELINE_START_DATE"] = args.start_date
+        os.environ["PIPELINE_END_DATE"] = ""   # empty => None => window stays open
+        log(f"notebook window: START_DATE={args.start_date}  END_DATE=open (extends to newest)", fh)
+    else:
+        log("consumer mode: running 08/09/10 off GIC aggregates (no raw, no window)", fh)
+    for nb in notebooks:
         code = run([py, "-m", "jupyter", "nbconvert", "--to", "notebook",
                     "--execute", "--inplace",
                     f"notebooks/{nb}.ipynb",
