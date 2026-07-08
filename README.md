@@ -1,95 +1,119 @@
-# Personal Retail Tracking
+# RetailFlow — retail attention → signals → price
 
-Track how often stock tickers are mentioned on Reddit over time, and detect the
-moment a ticker "takes off" (the first-derivative / inflection point).
+Measure how much retail attention each stock **ticker** and **theme** is getting
+across **15 finance subreddits + X (Twitter) + StockTwits**, detect attention
+"take-offs" (trailing z-scores), score sentiment, combine the two into a
+**conviction score**, and emit **BUY/SELL signals with explicit reasons** — then
+overlay it all against **Bloomberg prices** to eyeball whether the crowd leads
+the move.
 
-The flow is simple and always the same:
+Everything runs from **one command** — `python update_data.py` — which does the
+right thing on either machine (it auto-detects). Because the raw posts can't
+leave the machine they live on, the pipeline is split where *text becomes
+numbers*: the heavy text work runs where the raw data is, and only small
+**text-free aggregates** (`GIC_RAW_DATA/`) are committed and shared.
 
+## How it works today
+
+```mermaid
+flowchart TD
+    R["15 finance subreddits"]:::src --> FA
+    X["X / Twitter"]:::src --> FA
+    ST["StockTwits"]:::src --> FA
+    FA["fetch_all.py — live API pull"]:::proc
+
+    subgraph PROD["PRODUCER machine — has the raw text"]
+      direction TB
+      FA --> ML["merge_live.py"]:::proc
+      ML --> PQ[("posts.parquet<br/>~10.8M raw posts")]:::data
+      PQ --> NB1["notebooks 01·02·06·07<br/>extract tickers + score sentiment"]:::proc
+      NB1 --> AG[("5 daily aggregates<br/>counts + sentiment")]:::data
+    end
+
+    AG -->|"export()"| GIC
+    GIC[["GIC_RAW_DATA/<br/>text-free aggregates<br/>★ the ONLY data committed ★"]]:::key
+    GIC <-->|"git push / pull"| GH[("GitHub")]:::data
+
+    subgraph WORK["WORK LAPTOP — no raw text allowed"]
+      direction TB
+      FA2["fetch_all.py"]:::proc --> AL["append_live_to_gic.py<br/>text-free append"]:::proc
+      AL --> GIC
+      GIC -->|"hydrate()"| DP[("data/processed")]:::data
+      DP --> NB2["notebooks 08·09·10<br/>conviction + BUY/SELL signals"]:::proc
+      BB["pull_bloomberg_prices.py"]:::proc --> PR[("data/prices — PX_LAST")]:::data
+      NB2 --> OV["notebooks 11–14<br/>price overlays"]:::proc
+      DP --> OV
+      PR --> OV
+    end
+
+    UD(["update_data.py — one command, auto-detects the machine"]):::key
+    UD -.->|orchestrates| FA
+    UD -.->|orchestrates| FA2
+
+    classDef src fill:#e8ecff,stroke:#7a86c8,color:#111
+    classDef proc fill:#ffffff,stroke:#555,color:#111
+    classDef data fill:#e7f6e7,stroke:#6fb06f,color:#111
+    classDef key fill:#fff4cc,stroke:#d4a800,stroke-width:2px,color:#111
 ```
-raw dumps         prep_posts.py         01 slice + screen          02 mentions                03 first derivative
-data/raw/*.zst -> posts.parquet   ->   posts_slice.parquet  ->  daily_ticker_counts.parquet -> take-off dates
-               (one-time, deduped)  (+ticker_classification)   (04 -> daily_theme_counts       (05 = same for
-                                                                      for themes)               themes)
-```
 
-Nothing is hardcoded to a specific stock. **The notebooks chain: 01 → 02 → 03
-and 01 → 04 → 05.** You pick subreddits and dates ONCE, in notebook 01; it
-saves the filtered slice (`posts_slice.parquet`) that 02 and 04 read, so the
-whole chain shares the same time window automatically.
+**The window is the one knob.** Edit `START_DATE` / `END_DATE` at the top of
+`update_data.py`: leave `END_DATE = ""` for **live** (up to today), or set a date
+to **freeze a past regime** for backtesting. The same two dates drive the
+notebooks and the Bloomberg pull. Full command cheat-sheet:
+**[RUNBOOK.md](RUNBOOK.md)**.
 
-## Where this fits — Retail Flow Tracker, Stage 1
+## Three-stage Retail Flow Tracker
 
-This repo is **Stage 1** of the three-stage Retail Flow Tracker (see
-`Updated Retail Tracking Proposal`):
-
-- **Stage 1 (this repo) — thematic / ticker mention tracking.** Count how often
-  tickers and themes are mentioned on Reddit, detect take-off (inflection)
-  points, and back-test whether those mentions *lead* price moves.
-- **Stage 2 — sentiment analysis** (bull/bear scoring), only if raw mentions
-  prove too noisy.
-- **Stage 3 — network analysis** of influential X accounts.
-
-The code here already covers the *mention* side of Stage 1 (clean -> mentions ->
-inflection -> themes). To **finish** Stage 1 you still need to wire in **price
-data** and measure the **lead/lag correlation**. The exact to-do list is at the
-bottom: see **"Next steps to complete Stage 1"**.
+- **Stage 1 (done) — attention + price.** Mentions across Reddit/X/StockTwits,
+  take-off detection, ticker/theme sentiment, conviction, BUY/SELL signals, and
+  Bloomberg price overlays to eyeball lead/lag.
+- **Stage 2 — sentiment upgrade** (FinTwitBERT, calibrated on StockTwits' own
+  bull/bear labels) if the VADER + WSB lexicon proves too noisy.
+- **Stage 3 — influence tracking** of individual accounts and subreddits (spec
+  in `weekly_task_lists/WEEK5_6_INFLUENCE_TRACKER_SPEC.md`).
 
 ## Folder layout
 
 ```
 RetailFlow1/
-├── README.md
+├── update_data.py            # ★ THE one command: edit the window at the top, run it
+├── pull_bloomberg_prices.py  # work laptop: pull PX_LAST for the overlays (blpapi)
+├── check_live_ingestion.py   # freshness check: what raw/derived/committed data is fresh
+├── RUNBOOK.md                # scenario cheat-sheet (live, backtest, bloomberg, setup)
 ├── requirements.txt
-├── data/
-│   ├── raw/         <-- the 15 downloaded .zst dumps (see data/README.md)
-│   ├── processed/   <-- posts.parquet = THE dataset + notebook outputs
-│   └── reference/   <-- Nasdaq ticker list + ticker_classification.csv
-├── example.env              # template for API keys (copy to .env - git-ignored)
+├── GIC_RAW_DATA/             # ★ the ONLY committed data: 5 text-free aggregates (~2 MB)
+├── api_calls/                # live API pulls
+│   ├── fetch_all.py          #   key check + calls every keyed source + auto-append
+│   ├── fetch_reddit_live.py  #   FetchLayer (or official Reddit OAuth)
+│   ├── fetch_stocktwits.py   #   public StockTwits API (no key)
+│   ├── fetch_x_live.py       #   X v2 API (armed; on when X_BEARER_TOKEN is set)
+│   ├── append_live_to_gic.py #   fold new posts into GIC_RAW_DATA (keeps NO raw text)
+│   └── test_fetchlayer.py    #   one-credit key test (fetch_all --test)
+├── data/                     # everything here is gitignored EXCEPT reference/
+│   ├── raw/                  #   immutable .zst dumps + live raw (transient)
+│   ├── processed/            #   posts.parquet + the 5 daily aggregates
+│   ├── prices/               #   Bloomberg PX_LAST (stays local — licensing)
+│   └── reference/            #   Nasdaq lists + ticker_classification.csv (committed)
 ├── data_ingestion/
-│   ├── README.md            # how to (re-)download dumps + rebuild the dataset
-│   ├── LIVE_INGESTION.md    # THE live-data playbook: keys, rate limits, cadences,
-│   │                        #   fintwit-bot adopt/keep verdicts, StockTwits, alerts
-│   ├── finance_subreddits.txt
+│   ├── LIVE_INGESTION.md     # keys, rate limits, cadences, Task Scheduler
 │   └── scripts/
-│       ├── prep_posts.py        # raw Reddit dumps -> posts.parquet (filters + dedup)
-│       ├── fetch_x_data.py      # download X (Twitter) data -> data/raw/X Data/*.zst
-│       ├── add_x_data.py        # merge X data into posts.parquet (source column)
-│       ├── check_notebooks.py   # validate / auto-fix broken .ipynb files
-│       ├── peek.py              # print first records of a .zst (debug)
-│       ├── zst_to_csv.py        # dump one .zst to CSV for Excel (debug)
-│       └── read_zst.py          # shared reader used by the two debug tools
+│       ├── prep_posts.py     #   raw .zst dumps -> posts.parquet (one-time backfill)
+│       ├── fetch_x_data.py   #   download the 3 HuggingFace X datasets
+│       ├── add_x_data.py     #   rebuild the X block of posts.parquet
+│       └── merge_live.py     #   append live raw into posts.parquet (producer)
 ├── notebooks/
-│   ├── 01_clean_data.ipynb          # LOAD the dataset (parquet, filtered)
-│   ├── 02_mentions_over_time.ipynb  # daily ticker mention counts + graphs
-│   ├── 03_first_derivative.ipynb    # take-off detection per ticker
-│   ├── 04_theme_mentions.ipynb      # keyword-based theme counts
-│   ├── 05_theme_first_derivative.ipynb
-│   ├── 06_ticker_sentiment.ipynb    # VADER+WSB lexicon, per-ticker long/short lean
-│   ├── 07_theme_sentiment.ipynb     # JPM-style theme sentiment chart + monitor
-│   ├── 08_ticker_conviction.ipynb   # per-TICKER mentions x sentiment: conviction z,
-│   │                                #   heatmaps, divergence flags, snail trails
-│   ├── 09_theme_conviction.ipynb    # the same conviction analysis per THEME
-│   │                                #   (ETF-anchored buckets from src/themes.py)
-│   └── 10_trading_signals.ipynb     # WHAT the model would BUY, when, with what
-│                                    #   conviction (0-5) - live-parity trailing
-│                                    #   baselines; becomes the daily run when
-│                                    #   live ingestion lands
-├── dashboard/
-│   └── app.py               # Streamlit dashboard over the derived parquets:
-│                            #   streamlit run dashboard/app.py  (timeframe picker,
-│                            #   top mentions/velocity, sentiment, momentum map)
+│   ├── 01–05   clean -> mentions -> take-offs, tickers & themes   (PRODUCER: needs raw)
+│   ├── 06–07   ticker / theme sentiment (VADER + WSB lexicon)     (PRODUCER: needs raw)
+│   ├── 08–09   ticker / theme conviction (mentions × sentiment)
+│   ├── 10      BUY/SELL trading signals (conviction 0–5 + reasons)
+│   └── 11–14   Bloomberg price overlays (mentions / derivative / conviction / signals)
 ├── src/
-│   ├── clean_data.py        # raw Reddit record -> tidy standard row (normalise)
-│   ├── x_data.py            # raw X (Twitter) rows -> the same standard shape
-│   ├── ticker_universe.py   # downloads the official list of valid US tickers
-│   ├── extract_tickers.py   # finds $TICKER / TICKER in text (precise rules)
-│   ├── screen_tickers.py    # word-ticker screening (case ratio + wordfreq)
-│   ├── build_mentions.py    # posts -> daily mention counts (per ticker)
-│   ├── inflection.py        # first-derivative take-off detector
-│   ├── sentiment.py         # VADER + WSB lexicon; daily ticker/theme sentiment
-│   └── themes.py            # TRADEABLE themes (each anchored to an ETF in THEME_ETFS)
-└── tests/
-    └── test_pipeline.py     # pytest checks for dataset + pipeline + notebooks
+│   ├── gic_data.py           # ★ export/hydrate + text-free aggregation & merge math
+│   ├── clean_data.py x_data.py stocktwits_data.py reddit_live_data.py  # normalisers
+│   ├── extract_tickers.py screen_tickers.py ticker_universe.py         # ticker logic
+│   ├── build_mentions.py inflection.py sentiment.py themes.py          # signals logic
+├── dashboard/app.py          # Streamlit dashboard over the aggregates
+└── tests/test_pipeline.py    # pytest checks for dataset + pipeline + notebooks
 ```
 
 ## One-time setup
@@ -187,8 +211,8 @@ step: `python3 data_ingestion/scripts/prep_posts.py` — see
 Notebooks 02 and 04 have **no time-window cells of their own** — they read the
 slice and refuse to run (with a clear error) if it doesn't exist yet. To change
 the analysis window, edit notebook 01 and re-run the chain from there. Tip: the
-notebooks are JSON files — if one ever breaks (e.g. hand-edited quotes), run
-`python3 data_ingestion/scripts/check_notebooks.py --fix`.
+notebooks are JSON files — if one ever breaks (e.g. hand-edited quotes), restore
+it from git.
 
 **Notebook 02 — mentions over time.** Builds daily counts and draws **two graphs**.
 
@@ -461,65 +485,24 @@ Known ways this signal can lie, and what to do about each:
 
 ---
 
-## Next steps to complete Stage 1
+## Stage 1 status
 
-> **Week 2 instructions:** the step-by-step playbook for everything below —
-> including exactly HOW to run the price backtest — is in
-> **[weekly_task_lists/WEEK2.md](weekly_task_lists/WEEK2.md)**.
+The full Stage-1 loop is **built and running** — one command
+(`python update_data.py`) refreshes it end to end:
 
-Goal of Stage 1 (from the proposal): show whether **Reddit mention spikes lead
-ETF price moves**, measure the **time lag**, and pin down the **inflection
-point**. The four Bloomberg ETFs in the proposal line up with themes this repo
-already knows:
+| Piece | Where | State |
+|---|---|---|
+| Mentions & themes | notebooks 02 / 04 (Reddit + X + StockTwits) | ✅ |
+| Take-off detection | notebooks 03 / 05 (trailing z-scores, live-parity) | ✅ |
+| Sentiment | notebooks 06 / 07 (VADER + WSB lexicon) | ✅ |
+| Conviction + BUY/SELL signals | notebooks 08 / 09 / 10 (reasons attached) | ✅ |
+| Price overlays | `pull_bloomberg_prices.py` + notebooks 11–14 (PX_LAST) | ✅ |
+| Live ingestion | `update_data.py` → `GIC_RAW_DATA` (text-free) | ✅ |
 
-| Proposal ETF | Theme in `src/themes.py` |
-|--------------|--------------------------|
-| GLD  (gold)            | `gold_metals` |
-| MAGS (mega-cap tech)   | `ai_megacap` |
-| BTC  (crypto)          | `crypto` |
-| SMH  (semiconductors)  | `semiconductors` |
+The four proposal ETFs already map to themes: **GLD → `gold_metals`,
+MAGS → `ai_megacap`, BTC → `crypto`, SMH → `semiconductors`**.
 
-Work through these in order:
-
-- [x] **1. Get the data in.** DONE 2026-07-02: the 15 `.zst` dumps are in
-      `data/raw/` and `data/processed/posts.parquet` (7.95M posts, all dates)
-      is built. To redo with different filters, edit and run
-      `python3 data_ingestion/scripts/prep_posts.py`.
-
-- [ ] **2. Produce the mention signals.** Run `notebooks/02_mentions_over_time.ipynb`
-      (daily raw ticker counts) and
-      `notebooks/04_theme_mentions.ipynb` for the four themes above. This gives you
-      the daily series you'll line up against prices. Word-ticker screening
-      (`data/reference/ticker_classification.csv`, generated 2026-07-03 — see
-      "Screening word-tickers") is picked up automatically; re-run notebook 01's
-      screening section if you change its thresholds.
-
-- [ ] **3. Add price data (the missing input).** Export daily price history from
-      **Bloomberg** for GLD, MAGS, BTC and SMH and save them as CSVs in a new
-      `data/prices/` folder, one file per ETF, columns `date,close`. This is the
-      only Stage-1 input the repo doesn't generate itself.
-
-- [ ] **4. Measure lead/lag (the core validation).** Build a small step that, for
-      each theme, lines up daily mentions with that ETF's daily return and
-      computes the correlation at several lags (e.g. mentions shifted -10..+10
-      days). The lag with the strongest correlation tells you **if** mentions lead
-      price and **by how many days**. _(I can build this as `src/price_lag.py` +
-      a `notebooks/06_mention_price_lag.ipynb` — just ask.)_
-
-- [ ] **5. Define the inflection rule.** Using `notebooks/03_first_derivative.ipynb`,
-      settle on the `K` threshold (std-devs above normal) that best lines up with
-      the price moves you found in step 4. Write down which `K` you picked and why.
-
-- [ ] **6. Write up findings.** For each theme: does a mention spike lead the ETF?
-      what lag? is raw mention count a strong enough signal, or too noisy (which
-      would trigger **Stage 2 — sentiment**)? Note the proposal's three concerns:
-      bot-posting noise, short-vs-long direction, and selection bias (e.g. NVDA
-      already being over-mentioned).
-
-- [ ] **7. Live-API check (only if step 4 is promising).** Validate on recent data
-      via the Reddit API (PRAW) once the paid tier is approved, to confirm the
-      back-test holds out-of-sample. See "Historical vs. live data" above for the
-      ingestion pattern and the score-maturity caveat.
-
-Steps 1-3 are setup/data; **step 4 is the actual Stage-1 result** that decides
-whether you proceed straight to live testing or fall back to Stage 2 sentiment.
+What's left is **judgement, not plumbing**: open the overlay notebooks (11–14),
+read whether attention leads price cleanly enough, and — if raw mentions prove
+too noisy — trigger the **Stage 2** sentiment upgrade (FinTwitBERT, calibrated
+on StockTwits' own bull/bear labels).

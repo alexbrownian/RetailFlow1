@@ -262,4 +262,10 @@ def main():
     path = append_raw(fresh)
     save_seen(seen + [post_id(p) for p in fresh])
     print(f"kept {len(fresh)} NEW posts (of {len(posts)} fetched) -> {path}")
-    print("raw accumulates here; append into posts.p
+    print("raw accumulates here; append into posts.parquet with:  "
+          "python data_ingestion/scripts/merge_live.py")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -26,8 +26,8 @@ data came from.
                                                        subreddit, title, selftext,
                                                        num_comments
                               |                              |
-                     scripts/peek.py                 notebooks 02-05 read this
-                     (sanity-check a file)           (mentions, themes, take-offs)
+                     prep_posts.py                   notebooks 02-05 read this
+                     (clean + dedup)                 (mentions, themes, take-offs)
 ```
 
 **Step 2 has two interchangeable scripts** — both reuse the project's own
@@ -68,9 +68,6 @@ run immediately afterwards.
 | `finance_subreddits.txt` | Subreddit filter list used by `prep_posts.py` (now 17 names — Bitcoin and thetagang were added 2026-07-02) |
 | `scripts/prep_posts.py` | Ingestion, filtered (subs + date window) |
 | `scripts/prep_posts.py` | Ingestion, full dump, memory-safe batching |
-| `scripts/peek.py` | Print the first records of a `.zst` (quick download check) |
-| `scripts/zst_to_csv.py` | OPTIONAL: dump one `.zst` to CSV for eyeballing in Excel |
-| `scripts/read_zst.py` | Shared streaming reader used by peek/zst_to_csv |
 
 **Downloaded so far** (submissions only, no comment dumps yet): wallstreetbets,
 CryptoCurrency, personalfinance, Bitcoin, investing, stocks, pennystocks,
@@ -94,9 +91,7 @@ https://academictorrents.com/details/3e3f64dee22dc304cdd2546254ca1f8e8ae542b4
    (`_submissions` = posts; `_comments` = comments — names are
    capital-sensitive: `StockMarket`, `SecurityAnalysis`, `Bogleheads`).
 4. Set the save path to this project's `data/raw/` and let it finish.
-5. Sanity-check a file:
-   `python3 data_ingestion/scripts/peek.py data/raw/<name>_submissions.zst`
-6. Re-run step 2 (one of the two prep scripts) to rebuild `posts.parquet`.
+5. Re-run step 2 (one of the two prep scripts) to rebuild `posts.parquet`.
 
 ---
 

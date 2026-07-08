@@ -126,4 +126,12 @@ snaps = sorted(glob.glob(os.path.join(ROOT, "data", "processed",
 print(f"snapshots  : {len(snaps)} files"
       + (f", latest {os.path.basename(snaps[-1])}" if snaps else
          " - none yet (update_data.py creates them)"))
-logs = sorted(glob.glob(os.path.join(ROOT, "logs", "run_*.l
+logs = sorted(glob.glob(os.path.join(ROOT, "logs", "run_*.log")))
+if logs:
+    tail = open(logs[-1], encoding="utf-8").read().strip().splitlines()[-1]
+    print(f"last log   : {os.path.basename(logs[-1])} | last line: {tail}")
+else:
+    print("last log   : none - update_data.py has never run")
+
+print("\nRule of thumb: layer N stale but layer N-1 fresh => the step between "
+      "them didn't run. All [LIVE] => the dashboard chip will show LIVE too.")
