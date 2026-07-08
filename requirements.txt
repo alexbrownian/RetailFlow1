@@ -11,3 +11,4 @@ vaderSentiment
 joblib
 streamlit
 python-dotenv
+pip-system-certs

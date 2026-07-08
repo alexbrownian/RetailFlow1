@@ -106,15 +106,33 @@ def main():
                    help="run the fetch layer only (each source self-skips "
                         "if its key is missing), then stop")
     p.add_argument("--consumer", action="store_true",
-                   help="WORK-LAPTOP mode: fetch -> fold into GIC_RAW_DATA -> "
-                        "hydrate -> run the CONSUMER notebooks (08/09/10) only. "
-                        "No raw posts.parquet needed.")
+                   help="force WORK-LAPTOP mode: fold into GIC_RAW_DATA, hydrate, "
+                        "run the CONSUMER notebooks (08/09/10) only. Auto-selected "
+                        "already when posts.parquet is absent.")
+    p.add_argument("--producer", action="store_true",
+                   help="force PRODUCER mode even if posts.parquet is missing "
+                        "(rarely needed - the default auto-detects)")
     p.add_argument("--start-date", default=DEFAULT_START_DATE,
                    help=f"history depth notebook 01 slices from (default "
-                        f"{DEFAULT_START_DATE}); the END is always open so the "
-                        f"window extends to the newest data")
+                        f"{DEFAULT_START_DATE}), 'YYYY-MM-DD' inclusive")
+    p.add_argument("--end-date", default="",
+                   help="window END, 'YYYY-MM-DD' EXCLUSIVE. Empty = LIVE "
+                        "(window extends to the newest data). Set it to pin a "
+                        "historical regime, e.g. --end-date 2021-11-01")
     args = p.parse_args()
     dry = args.dry_run
+
+    # PRODUCER vs CONSUMER is decided by whether the raw store exists here, so
+    # the SAME command works on both machines. Flags override the auto-detect.
+    posts_path = os.path.join(ROOT, "data", "processed", "posts.parquet")
+    if args.producer:
+        consumer = False
+    elif args.consumer:
+        consumer = True
+    else:
+        consumer = not os.path.exists(posts_path)
+    log(f"mode: {'CONSUMER (work laptop)' if consumer else 'PRODUCER'} "
+        f"(posts.parquet {'present' if os.path.exists(posts_path) else 'absent'})")
 
     os.makedirs(LOG_DIR, exist_ok=True)
     os.makedirs(SNAP_DIR, exist_ok=True)
@@ -139,7 +157,7 @@ def main():
     # ---- 2. MERGE / APPEND: fold EVERY live source (Reddit / X / StockTwits)
     #         into the right store. Append-only + idempotent either way, so it's
     #         safe to always run - nothing new means nothing appended. ----
-    if args.consumer:
+    if consumer:
         # Work laptop: no raw store. Fold into GIC_RAW_DATA (text-free) and
         # hydrate GIC_RAW_DATA -> data/processed so the consumer notebooks find
         # fresh aggregates. append_live_to_gic.py does both.
@@ -153,16 +171,19 @@ def main():
 
     # ---- 3. COMPUTE: execute the notebook chain in place ----
     # Producer runs the full chain from raw; consumer runs only 08/09/10 off the
-    # aggregates (no raw needed, so no window to set).
-    notebooks = CONSUMER_NOTEBOOKS if args.consumer else NOTEBOOKS
-    if not args.consumer:
-        # Notebook 01 reads these; END empty = open-ended so the window extends
-        # to the newest post. Child nbconvert processes inherit this environment.
+    # aggregates. The window (START/END) is passed to notebook 01 via env vars;
+    # the consumer notebooks ignore it (they read whole aggregate files).
+    notebooks = CONSUMER_NOTEBOOKS if consumer else NOTEBOOKS
+    end_label = args.end_date if args.end_date else "open (extends to newest)"
+    if not consumer:
+        # Notebook 01 reads these. END empty => open-ended (live). Child nbconvert
+        # processes inherit this environment.
         os.environ["PIPELINE_START_DATE"] = args.start_date
-        os.environ["PIPELINE_END_DATE"] = ""   # empty => None => window stays open
-        log(f"notebook window: START_DATE={args.start_date}  END_DATE=open (extends to newest)", fh)
+        os.environ["PIPELINE_END_DATE"] = args.end_date
+        log(f"notebook window: START_DATE={args.start_date}  END_DATE={end_label}", fh)
     else:
-        log("consumer mode: running 08/09/10 off GIC aggregates (no raw, no window)", fh)
+        log(f"consumer mode: running 08/09/10 off GIC aggregates "
+            f"(window {args.start_date} -> {end_label} already baked into the aggregates)", fh)
     for nb in notebooks:
         code = run([py, "-m", "jupyter", "nbconvert", "--to", "notebook",
                     "--execute", "--inplace",
