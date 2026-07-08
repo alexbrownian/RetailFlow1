@@ -4,6 +4,8 @@ matplotlib
 zstandard
 requests
 jupyter
+nbconvert
+ipykernel
 wordfreq
 huggingface_hub
 fsspec

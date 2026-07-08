@@ -7,51 +7,54 @@ across **15 finance subreddits + X (Twitter) + StockTwits**, detect attention
 overlay it all against **Bloomberg prices** to eyeball whether the crowd leads
 the move.
 
-Everything runs from **one command** — `python update_data.py` — which does the
-right thing on either machine (it auto-detects). Because the raw posts can't
-leave the machine they live on, the pipeline is split where *text becomes
-numbers*: the heavy text work runs where the raw data is, and only small
-**text-free aggregates** (`GIC_RAW_DATA/`) are committed and shared.
+Everything runs from **one command** — `python update_data.py` — which fetches
+the latest posts, turns them into small **text-free daily aggregates**
+(`GIC_RAW_DATA/` — counts + sentiment, no post text kept), rebuilds the signals,
+and snapshots them. Edit the date window at the top of the file to run **live**
+(up to today) or **backtest a past window**.
 
-## How it works today
+## How it works — the pipeline
 
 ```mermaid
 flowchart TD
     R["15 finance subreddits"]:::src --> FA
     X["X / Twitter"]:::src --> FA
     ST["StockTwits"]:::src --> FA
-    FA["fetch_all.py — live API pull"]:::proc
 
-    subgraph PROD["PRODUCER machine — has the raw text"]
+    FA["fetch_all.py<br/>pull the latest posts (raw, transient)"]:::proc
+    FA --> AP["append_live_to_gic.py"]:::proc
+
+    subgraph INSIDE["inside append_live_to_gic.py — no raw text is kept"]
       direction TB
-      FA --> ML["merge_live.py"]:::proc
-      ML --> PQ[("posts.parquet<br/>~10.8M raw posts")]:::data
-      PQ --> NB1["notebooks 01·02·06·07<br/>extract tickers + score sentiment"]:::proc
-      NB1 --> AG[("5 daily aggregates<br/>counts + sentiment")]:::data
+      S1["1 · normalise posts → id, date, text, source"]:::step
+      S2["2 · dedup vs the seen-ids ledger (first seen wins)"]:::step
+      S3["3 · extract tickers + score sentiment (VADER + WSB)"]:::step
+      S4["4 · aggregate → daily counts + sentiment per ticker/theme"]:::step
+      S1 --> S2 --> S3 --> S4
     end
+    AP --> S1
+    S4 --> GIC
 
-    AG -->|"export()"| GIC
-    GIC[["GIC_RAW_DATA/<br/>text-free aggregates<br/>★ the ONLY data committed ★"]]:::key
-    GIC <-->|"git push / pull"| GH[("GitHub")]:::data
+    GIC[("GIC_RAW_DATA/<br/>5 text-free daily aggregates")]:::key
+    GIC -->|"hydrate()"| DP[("data/processed")]:::data
 
-    subgraph WORK["WORK LAPTOP — no raw text allowed"]
-      direction TB
-      FA2["fetch_all.py"]:::proc --> AL["append_live_to_gic.py<br/>text-free append"]:::proc
-      AL --> GIC
-      GIC -->|"hydrate()"| DP[("data/processed")]:::data
-      DP --> NB2["notebooks 08·09·10<br/>conviction + BUY/SELL signals"]:::proc
-      BB["pull_bloomberg_prices.py"]:::proc --> PR[("data/prices — PX_LAST")]:::data
-      NB2 --> OV["notebooks 11–14<br/>price overlays"]:::proc
-      DP --> OV
-      PR --> OV
-    end
+    DP --> N89["notebooks 08 · 09<br/>ticker / theme conviction (z-scores)"]:::proc
+    N89 --> N10["notebook 10<br/>BUY / SELL signals + reasons"]:::proc
+    N10 --> SIG[("trade_signals")]:::data
 
-    UD(["update_data.py — one command, auto-detects the machine"]):::key
-    UD -.->|orchestrates| FA
-    UD -.->|orchestrates| FA2
+    BB["pull_bloomberg_prices.py<br/>daily close (PX_LAST)"]:::proc --> PR[("data/prices")]:::data
+
+    DP --> OV["notebooks 11–14<br/>overlay mentions / derivative / conviction / signals vs price"]:::proc
+    SIG --> OV
+    PR --> OV
+    OV --> EYE(["eyeball: does attention lead price?"]):::key
+
+    UD(["update_data.py — one command:<br/>fetch → append → hydrate → 08·09·10 → snapshot"]):::key
+    UD -.-> FA
 
     classDef src fill:#e8ecff,stroke:#7a86c8,color:#111
     classDef proc fill:#ffffff,stroke:#555,color:#111
+    classDef step fill:#f6f6ff,stroke:#9099bb,color:#111
     classDef data fill:#e7f6e7,stroke:#6fb06f,color:#111
     classDef key fill:#fff4cc,stroke:#d4a800,stroke-width:2px,color:#111
 ```
@@ -102,8 +105,8 @@ RetailFlow1/
 │       ├── add_x_data.py     #   rebuild the X block of posts.parquet
 │       └── merge_live.py     #   append live raw into posts.parquet (producer)
 ├── notebooks/
-│   ├── 01–05   clean -> mentions -> take-offs, tickers & themes   (PRODUCER: needs raw)
-│   ├── 06–07   ticker / theme sentiment (VADER + WSB lexicon)     (PRODUCER: needs raw)
+│   ├── 01–05   clean -> mentions -> take-offs, tickers & themes   (builds aggregates from raw dumps)
+│   ├── 06–07   ticker / theme sentiment (VADER + WSB lexicon)     (builds aggregates from raw dumps)
 │   ├── 08–09   ticker / theme conviction (mentions × sentiment)
 │   ├── 10      BUY/SELL trading signals (conviction 0–5 + reasons)
 │   └── 11–14   Bloomberg price overlays (mentions / derivative / conviction / signals)

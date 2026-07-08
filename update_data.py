@@ -58,9 +58,15 @@ SNAP_DIR = os.path.join(ROOT, "data", "processed", "signal_snapshots")
 # that read the text-free aggregates.
 PRODUCER_NOTEBOOKS = ["01_clean_data", "02_mentions_over_time",
                       "06_ticker_sentiment", "07_theme_sentiment",
+                      "08_ticker_conviction", "09_theme_conviction",
                       "10_trading_signals"]
 CONSUMER_NOTEBOOKS = ["08_ticker_conviction", "09_theme_conviction",
                       "10_trading_signals"]
+# Bloomberg price overlays - rendered at the end of every run (need prices).
+OVERLAY_NOTEBOOKS = ["11_overlay_ticker_mentions",
+                     "12_overlay_ticker_first_derivative",
+                     "13_overlay_theme_conviction",
+                     "14_overlay_trading_signals"]
 SIGNAL_FILES = ["trade_signals.parquet", "trade_signals_tickers.parquet"]
 
 # Columns that would leak the raw posts - the safety check forbids them in the
@@ -79,15 +85,20 @@ def log(msg, fh=None):
 
 
 def run(cmd, fh, dry, show=False):
-    """Run a child command, logging it. Returns its exit code (0 on --dry-run)."""
+    """Run a child command. When show=True its output STREAMS LIVE to the
+    terminal, so long steps (the fetch, a notebook) show progress instead of a
+    frozen-looking prompt. Otherwise output is captured quietly. Returns the
+    exit code (0 on --dry-run)."""
     log("RUN  " + " ".join(cmd), fh)
     if dry:
         return 0
+    if show:
+        r = subprocess.run(cmd, cwd=ROOT)          # inherit stdout/stderr = live
+        if r.returncode != 0:
+            log("FAIL (see the output above)", fh)
+        return r.returncode
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
-    if show and r.stdout:
-        for line in r.stdout.strip().splitlines():
-            log("  | " + line, fh)
     if r.returncode != 0:
         log("FAIL " + (r.stderr or r.stdout)[-800:], fh)
     return r.returncode
@@ -132,6 +143,8 @@ def main():
     p.add_argument("--end", default=END_DATE, help="override END_DATE this run ('' = live)")
     p.add_argument("--skip-fetch", action="store_true",
                    help="recompute only - no API calls")
+    p.add_argument("--skip-overlays", action="store_true",
+                   help="don't pull Bloomberg prices / render notebooks 11-14")
     p.add_argument("--producer", action="store_true", help="force producer mode")
     p.add_argument("--consumer", action="store_true", help="force consumer mode")
     p.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
@@ -194,9 +207,10 @@ def main():
         log(f"consumer: notebooks 08/09/10 off GIC aggregates "
             f"(window {args.start} -> {end_label} already in the aggregates)", fh)
     for nb in notebooks:
+        log(f"running notebook {nb} (this can take a while; output streams below)", fh)
         code = run([py, "-m", "jupyter", "nbconvert", "--to", "notebook",
                     "--execute", "--inplace", f"notebooks/{nb}.ipynb",
-                    "--ExecutePreprocessor.timeout=3600"], fh, dry)
+                    "--ExecutePreprocessor.timeout=3600"], fh, dry, show=True)
         if code != 0:
             log(f"ABORT: notebook {nb} failed - later steps skipped", fh)
             return 1
@@ -211,6 +225,23 @@ def main():
             if not dry and not os.path.exists(dest):
                 shutil.copy2(src_path, dest)
             log(f"snapshot -> {dest}", fh)
+
+    # ---- 4b. PRICES + OVERLAYS: pull Bloomberg, then render notebooks 11-14 so
+    #          this one command fills in the overlay plots. Non-fatal: if the
+    #          price pull can't run (no Terminal/blpapi) we just skip 11-14. ----
+    if not dry and not args.skip_overlays:
+        log("pulling Bloomberg prices for the overlays (Terminal must be open)", fh)
+        run([py, "pull_bloomberg_prices.py"], fh, dry, show=True)
+        prices_path = os.path.join(ROOT, "data", "prices", "prices.parquet")
+        if os.path.exists(prices_path):
+            for nb in OVERLAY_NOTEBOOKS:
+                log(f"rendering overlay {nb} (output streams below)", fh)
+                run([py, "-m", "jupyter", "nbconvert", "--to", "notebook",
+                     "--execute", "--inplace", f"notebooks/{nb}.ipynb",
+                     "--ExecutePreprocessor.timeout=1800"], fh, dry, show=True)
+        else:
+            log("no data/prices/prices.parquet - skipped overlays 11-14. Open the "
+                "Bloomberg Terminal (and pip install blpapi), then re-run.", fh)
 
     # ---- 5. PUBLISH aggregates to GIC_RAW_DATA (producer only; the consumer's
     #         append step already wrote GIC_RAW_DATA + hydrated) ----
