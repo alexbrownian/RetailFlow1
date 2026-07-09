@@ -175,7 +175,11 @@ def run_notebook(nb, fh, dry, timeout=3600):
     tmp = os.path.join(ROOT, "notebooks", tmp_name)
 
     log(f"running notebook {nb} (this can take a while; output streams below)", fh)
-    code = run([py, "-m", "jupyter", "nbconvert", "--to", "notebook",
+    # NOTE: "-m nbconvert" (not "-m jupyter nbconvert"). The jupyter launcher
+    # looks for a jupyter-nbconvert.exe on PATH, which a --user pip install
+    # doesn't add on Windows -> "Jupyter command not found". Importing the
+    # module directly always uses THIS python's own nbconvert.
+    code = run([py, "-m", "nbconvert", "--to", "notebook",
                 "--execute", src,
                 "--output", tmp_name, "--output-dir", os.path.join(ROOT, "notebooks"),
                 f"--ExecutePreprocessor.timeout={timeout}"], fh, dry, show=True)
@@ -285,6 +289,35 @@ def main():
     if not dry and not check_and_repair_notebooks(fh):
         log("ABORT: some notebooks are broken and could not be restored", fh)
         return 1
+
+    # ---- 0b. ENVIRONMENT PRE-FLIGHT: every package the run will need must
+    # live in THIS python (the one running this script - multiple installed
+    # Pythons is the classic cause of "works one day, not the next").
+    # Checking everything up front gives ONE clear message with ONE fix
+    # command, instead of a confusing failure 20 minutes into the run. ----
+    if not dry:
+        needed = ["pandas", "pyarrow", "matplotlib", "zstandard", "requests",
+                  "nbconvert", "ipykernel",          # notebook execution
+                  "vaderSentiment", "joblib",        # sentiment (06/07 + live fold)
+                  "wordfreq",                        # word-ticker screening (01)
+                  "scipy"]                           # inflection peaks (03/05)
+        missing = []
+        for name in needed:
+            try:
+                __import__(name)
+            except ImportError:
+                missing.append(name)
+        if missing:
+            log(f"ABORT: this python ({py}) is missing: {', '.join(missing)}", fh)
+            log(f"fix:  {py} -m pip install {' '.join(missing)} --user", fh)
+            log("(or:  pip install -r requirements.txt --user  with the same python)", fh)
+            return 1
+        # git powers the broken-notebook auto-repair; warn early if absent.
+        try:
+            subprocess.run(["git", "--version"], capture_output=True)
+        except FileNotFoundError:
+            log("WARNING: git not found on PATH - a truncated notebook cannot "
+                "be auto-restored on this machine", fh)
 
     # The window travels to every child process (notebooks 01 and 11-14, and
     # pull_bloomberg_prices.py) through these two env vars, so --start/--end

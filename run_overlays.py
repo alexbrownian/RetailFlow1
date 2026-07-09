@@ -83,7 +83,9 @@ def main():
                   f"(produce it via {made_by} first)")
             continue
         print(f"\n--- executing notebooks/{name}.ipynb ---", flush=True)
-        code = stream([py, "-m", "jupyter", "nbconvert", "--to", "notebook",
+        # "-m nbconvert" (not "-m jupyter nbconvert"): the jupyter launcher
+        # needs jupyter-nbconvert.exe on PATH, which --user installs lack.
+        code = stream([py, "-m", "nbconvert", "--to", "notebook",
                        "--execute", "--inplace", f"notebooks/{name}.ipynb",
                        "--ExecutePreprocessor.timeout=1800"])
         if code != 0:

@@ -11,6 +11,10 @@ huggingface_hub
 fsspec
 vaderSentiment
 joblib
+scipy
+numpy
+altair
+pytest
 streamlit
 python-dotenv
 pip-system-certs

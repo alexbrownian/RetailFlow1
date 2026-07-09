@@ -159,8 +159,9 @@ def main():
         if not os.path.exists(backup) and not has_source:
             os.replace(args.posts, backup)
             print("first merge: old file kept at", backup)
-        else:
-            os.remove(args.posts)
+        # os.replace overwrites the target atomically (on Windows too) - no
+        # separate delete first, so there is never a moment with NO posts
+        # file (an interrupted delete+rename could lose the store entirely).
         os.replace(out_path, args.posts)
     except PermissionError:
         # Another process (usually a Jupyter kernel - notebook 01 keeps the
