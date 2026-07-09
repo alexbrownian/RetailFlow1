@@ -519,8 +519,24 @@ def main():
 
     # ---- 3. COMPUTE: notebooks in place ----
     # live -> refresh the signal notebooks; --full -> rebuild everything over
-    # the whole build range; backtest -> nothing to compute (the aggregates
-    # and signals are window-independent; only the overlay VIEW changes).
+    # the whole build range; backtest -> normally nothing to compute (the
+    # aggregates and signals are window-independent) UNLESS the aggregates
+    # are newer than the conviction/signal outputs - those are derived
+    # locally (they do not travel through git), so after a pull that brings
+    # fresh aggregates they must be recomputed once on this machine.
+    def signals_stale():
+        agg = os.path.join(ROOT, "data", "processed", "daily_ticker_counts.parquet")
+        if not os.path.exists(agg):
+            return False
+        agg_mtime = os.path.getmtime(agg)
+        derived = ["daily_ticker_conviction.parquet", "daily_theme_conviction.parquet",
+                   "trade_signals.parquet", "trade_signals_tickers.parquet"]
+        for f in derived:
+            p = os.path.join(ROOT, "data", "processed", f)
+            if not os.path.exists(p) or os.path.getmtime(p) < agg_mtime:
+                return True
+        return False
+
     if full_chain:
         notebooks = FULL_CHAIN_NOTEBOOKS
         os.environ["PIPELINE_START_DATE"] = BUILD_START_DATE
@@ -530,9 +546,13 @@ def main():
     elif live:
         notebooks = SIGNAL_NOTEBOOKS
         log("live: refreshing signal notebooks 08/09/10 off the aggregates", fh)
+    elif signals_stale():
+        notebooks = SIGNAL_NOTEBOOKS
+        log("backtest: the aggregates are NEWER than the conviction/signal "
+            "outputs (fresh pull?) - running 08/09/10 once to refresh them", fh)
     else:
         notebooks = []
-        log(f"backtest: aggregates + signals are window-independent - only "
+        log(f"backtest: aggregates + signals are up to date - only "
             f"re-rendering the overlays for {args.start} -> {end_label}", fh)
     for nb in notebooks:
         code = run_notebook(nb, fh, dry)
@@ -607,8 +627,7 @@ def main():
                 log(f"  {label:<13} : {len(s)} on file", fh)
         prices_path = os.path.join(ROOT, "data", "prices", "prices.parquet")
         log(f"  price overlays: {'rendered (11-16)' if os.path.exists(prices_path) and not args.skip_overlays else 'skipped (no prices.parquet on this machine)'}", fh)
-        log(f"  safety check  : {'PASS' if safe else 'FAIL - do NOT commit'}", fh)
-        log(f"  next          : git add ABSTRACTED_DATA && git commit && git push", fh)
+        log(f"  safety check  : {'PASS' if safe else 'FAIL - do NOT commit ABSTRACTED_DATA'}", fh)
         log("=" * 60, fh)
     return 0 if safe else 1
 
