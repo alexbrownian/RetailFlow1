@@ -101,37 +101,53 @@ def test_schema_columns():
 
 def test_total_row_count():
     if HAS_SOURCE:
-        # Reddit rows are pinned exactly; X rows are checked separately.
+        # The historical archive is a FLOOR, not an exact pin: live ingestion
+        # appends new reddit/x/stocktwits rows every run, so equality would
+        # fail daily. Shrinking below the archive count means data was LOST -
+        # that is what this test still catches loudly.
         src = pq.read_table(POSTS_PATH, columns=["source"]).to_pandas()["source"]
         counts = src.value_counts().to_dict()
-        assert counts.get("reddit") == EXPECTED_TOTAL_ROWS
+        assert counts.get("reddit", 0) >= EXPECTED_TOTAL_ROWS, (
+            f"reddit rows fell BELOW the archive count ({EXPECTED_TOTAL_ROWS:,}) - "
+            "the dataset lost data; restore posts.parquet")
         x_rows = counts.get("x", 0)
         if EXPECTED_X_ROWS is not None:
-            assert x_rows == EXPECTED_X_ROWS
+            assert x_rows >= EXPECTED_X_ROWS
         else:
             assert x_rows > 0, (
                 "source column exists but no X rows found - "
                 "did add_x_data.py finish? Pin EXPECTED_X_ROWS after it runs.")
     else:
         n = pq.ParquetFile(POSTS_PATH).metadata.num_rows
-        assert n == EXPECTED_TOTAL_ROWS
+        assert n >= EXPECTED_TOTAL_ROWS
 
 
 def test_per_subreddit_counts():
     # Load just the one small column we need, not the whole table.
+    # FLOORS, not exact pins - live ingestion grows every subreddit daily.
+    # A count below the archive floor means history was lost.
     subs = pq.read_table(POSTS_PATH, columns=["subreddit"]).to_pandas()["subreddit"]
     counts = subs.value_counts().to_dict()
-    counts.pop("x_twitter", None)   # X rows live in their own pseudo-subreddit
-    assert counts == EXPECTED_SUBREDDITS
+    counts.pop("x_twitter", None)     # X rows live in their own pseudo-subreddit
+    counts.pop("stocktwits", None)    # live StockTwits rows, if present
+    for sub, floor in EXPECTED_SUBREDDITS.items():
+        assert counts.get(sub, 0) >= floor, (
+            f"r/{sub} has {counts.get(sub, 0):,} rows, below the archive "
+            f"floor {floor:,} - history was lost")
 
 
 def test_dates_are_valid():
     dates = pq.read_table(POSTS_PATH, columns=["date"]).to_pandas()["date"]
     # No empty dates (records without a parseable created_utc were dropped).
     assert (dates != "").all()
-    # All within a plausible range.
+    # All within a plausible range. The ceiling is ROLLING (today + 2 days of
+    # timezone slack) so live ingestion never trips it - it exists to catch
+    # garbage timestamps (e.g. 2050), not real new posts. It used to be
+    # pinned at 2026-01-01, which broke the day live data crossed it.
     assert dates.min() >= "2008-01-01"
-    assert dates.max() <= "2026-01-01"
+    ceiling = (datetime.date.today() + datetime.timedelta(days=2)).isoformat()
+    assert dates.max() <= ceiling, (
+        f"posts dated {dates.max()} are in the future - garbage timestamps?")
     # Spot-check the format is YYYY-MM-DD by parsing a sample strictly.
     sample = dates.sample(1000, random_state=0)
     for d in sample:

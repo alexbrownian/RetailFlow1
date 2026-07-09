@@ -4,37 +4,57 @@ update_data.py - THE one file. Edit the window, run it, done.
 
     python update_data.py
 
-It is the WHOLE pipeline in one place: fetch every live source, fold the new
-posts into the right store, recompute the notebooks, snapshot the signals,
-publish the committable aggregates, and safety-check them. It replaces the old
-run_daily.py + verify_gic.py (both removed - this file does their jobs).
+TWO SETTINGS, ONE KNOB (the window at the top of this file):
 
-THE WINDOW (the only thing you normally edit)
-    START_DATE  first day, 'YYYY-MM-DD' inclusive.
-    END_DATE    last day, 'YYYY-MM-DD' EXCLUSIVE.
-                "" = LIVE (extends to the newest data / today).
-                a date = freeze a past regime for backtesting.
+  LIVE MODE      END_DATE = ""   (the default day-to-day mode)
+      Fast path. Fetch a WEEK of the most popular posts from every live
+      source (FetchLayer Reddit + X, StockTwits), fold them into the
+      aggregates INCREMENTALLY (no slow notebook rebuild), recompute the
+      signal notebooks (08/09/10), pull prices and render the overlay
+      notebooks (11-14). Minutes, not hours.
+
+  BACKTEST MODE  END_DATE = "YYYY-MM-DD"
+      Freeze a past regime. Runs the FULL chain (01-10) from the raw store
+      so every aggregate is rebuilt for exactly that window, then renders
+      the overlays against prices for the same window. No fetching (the
+      past does not change) unless you pass --fetch.
+
     Examples:
-        START_DATE="2021-01-01"; END_DATE="2021-11-01"   -> Jan-Oct 2021
-        START_DATE="2021-01-01"; END_DATE=""             -> 2021 -> today (LIVE)
-        START_DATE="2025-01-01"; END_DATE=""             -> 2025 -> today (LIVE)
+        START_DATE="2021-01-01"; END_DATE="2021-11-01"   -> backtest Jan-Oct 2021
+        START_DATE="2021-01-01"; END_DATE=""             -> LIVE, 2021 -> today
+        START_DATE="2025-01-01"; END_DATE=""             -> LIVE, 2025 -> today
 
 WORKS ON BOTH MACHINES (auto-detected - you never choose)
     * personal laptop  (data/processed/posts.parquet exists) -> PRODUCER:
-        append live posts into posts.parquet, run the full notebook chain,
-        publish the aggregates into GIC_RAW_DATA.
+        live: merge live posts into posts.parquet AND fold the aggregates
+        incrementally; backtest/--full: run the whole notebook chain.
     * work laptop      (no posts.parquet)                     -> CONSUMER:
         fold live posts into GIC_RAW_DATA (text-free), rebuild signals there.
+        Notebooks 01-07 need the raw text so they can NEVER run here - only
+        08-14 (and that is by design, not a bug).
     Either way it ends by verifying GIC_RAW_DATA carries no raw text.
 
+SAFETY AGAINST TRUNCATED NOTEBOOKS (the old recurring failure)
+    1. Before anything runs, every notebook is checked to be valid JSON.
+       A broken (usually truncated) notebook is restored from git
+       automatically, and the run tells you it did that.
+    2. Notebooks are executed to a TEMP file first and only swapped into
+       place when the execution finished and produced valid JSON - so an
+       interrupted run can never truncate a notebook again.
+
 FLAGS (rarely needed)
-    --skip-fetch   recompute only, no API calls (handy after changing the window)
-    --start / --end   override the two dates just for this run
+    --full         force the full chain (01-10) even in live mode - use after
+                   changing the window or when you want sentiment rebuilt
+    --fetch        force API fetching in backtest mode
+    --skip-fetch   recompute only, no API calls
+    --skip-overlays  don't pull Bloomberg prices / render notebooks 11-14
+    --start / --end  override the two dates just for this run
     --producer / --consumer   force a mode instead of auto-detecting
 """
 
 import argparse
 import datetime
+import json
 import os
 import subprocess
 import sys
@@ -47,21 +67,23 @@ except Exception:
 # ============================ EDIT THIS =============================
 START_DATE = "2021-01-01"    # inclusive, 'YYYY-MM-DD'
 END_DATE = ""                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
-PRICE_TOP_N = 50             # Bloomberg puller grabs this many top-mentioned tickers
+PRICE_TOP_N = 150            # Bloomberg puller grabs this many top-mentioned tickers
 # ===================================================================
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(ROOT, "logs")
 SNAP_DIR = os.path.join(ROOT, "data", "processed", "signal_snapshots")
 
-# PRODUCER runs the full chain from raw text; CONSUMER runs only the notebooks
-# that read the text-free aggregates.
-PRODUCER_NOTEBOOKS = ["01_clean_data", "02_mentions_over_time",
-                      "06_ticker_sentiment", "07_theme_sentiment",
-                      "08_ticker_conviction", "09_theme_conviction",
-                      "10_trading_signals"]
-CONSUMER_NOTEBOOKS = ["08_ticker_conviction", "09_theme_conviction",
-                      "10_trading_signals"]
+# The FULL chain rebuilds everything from raw text (slow: 01 slices the 1 GB
+# store, 06/07 re-score sentiment). Only the producer can run it.
+FULL_CHAIN_NOTEBOOKS = ["01_clean_data", "02_mentions_over_time",
+                        "06_ticker_sentiment", "07_theme_sentiment",
+                        "08_ticker_conviction", "09_theme_conviction",
+                        "10_trading_signals"]
+# The SIGNAL notebooks read only the text-free aggregates - fast, and they
+# run on both machines. This is all the live fast path recomputes.
+SIGNAL_NOTEBOOKS = ["08_ticker_conviction", "09_theme_conviction",
+                    "10_trading_signals"]
 # Bloomberg price overlays - rendered at the end of every run (need prices).
 OVERLAY_NOTEBOOKS = ["11_overlay_ticker_mentions",
                      "12_overlay_ticker_first_derivative",
@@ -104,6 +126,76 @@ def run(cmd, fh, dry, show=False):
     return r.returncode
 
 
+# ---------------------------------------------------------------------------
+# NOTEBOOK SAFETY - validate before running, execute atomically
+# ---------------------------------------------------------------------------
+def notebook_is_valid(path):
+    """A notebook is a JSON file. Truncation (interrupted write, cloud-sync
+    hiccup) leaves invalid JSON, and nbconvert then dies with a confusing
+    error. This check is cheap and catches it up front."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            nb = json.load(f)
+        return isinstance(nb, dict) and "cells" in nb
+    except (ValueError, OSError):
+        return False
+
+
+def check_and_repair_notebooks(fh):
+    """Validate EVERY notebook. Broken ones are restored from git (the last
+    committed version is always a working one). Returns True if all
+    notebooks are valid afterwards."""
+    all_ok = True
+    for name in sorted(os.listdir(os.path.join(ROOT, "notebooks"))):
+        if not name.endswith(".ipynb"):
+            continue
+        path = os.path.join(ROOT, "notebooks", name)
+        if notebook_is_valid(path):
+            continue
+        log(f"notebook {name} is BROKEN (truncated/invalid JSON) - "
+            "restoring the last committed version from git", fh)
+        r = subprocess.run(["git", "checkout", "--", f"notebooks/{name}"],
+                           cwd=ROOT, capture_output=True, text=True)
+        if r.returncode == 0 and notebook_is_valid(path):
+            log(f"  restored {name} from git", fh)
+        else:
+            log(f"  could NOT restore {name} - fix by hand: "
+                f"git checkout -- notebooks/{name}", fh)
+            all_ok = False
+    return all_ok
+
+
+def run_notebook(nb, fh, dry, timeout=3600):
+    """Execute one notebook ATOMICALLY: run it into a temp file, check the
+    result is valid JSON, and only then swap it over the original. An
+    interrupted or failed run leaves the original notebook untouched."""
+    py = sys.executable
+    src = os.path.join(ROOT, "notebooks", f"{nb}.ipynb")
+    tmp_name = f"{nb}.tmp.ipynb"
+    tmp = os.path.join(ROOT, "notebooks", tmp_name)
+
+    log(f"running notebook {nb} (this can take a while; output streams below)", fh)
+    code = run([py, "-m", "jupyter", "nbconvert", "--to", "notebook",
+                "--execute", src,
+                "--output", tmp_name, "--output-dir", os.path.join(ROOT, "notebooks"),
+                f"--ExecutePreprocessor.timeout={timeout}"], fh, dry, show=True)
+    if dry:
+        return 0
+    if code != 0:
+        if os.path.exists(tmp):
+            os.remove(tmp)                     # never leave half-written files
+        return code
+    if not notebook_is_valid(tmp):
+        log(f"executed {nb} but the output file is invalid - keeping the "
+            "original notebook untouched", fh)
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        return 1
+    os.replace(tmp, src)                       # atomic on the same drive
+    log(f"ok   {nb}", fh)
+    return 0
+
+
 def verify_gic(fh):
     """Confirm GIC_RAW_DATA is present, small, and carries NO raw-revealing
     columns. Returns True if safe. (This is the old verify_gic.py, inlined.)"""
@@ -141,6 +233,10 @@ def main():
         description="Refresh all data for the window set at the top of this file.")
     p.add_argument("--start", default=START_DATE, help="override START_DATE this run")
     p.add_argument("--end", default=END_DATE, help="override END_DATE this run ('' = live)")
+    p.add_argument("--full", action="store_true",
+                   help="run the FULL chain (01-10) even in live mode")
+    p.add_argument("--fetch", action="store_true",
+                   help="force API fetching in backtest mode")
     p.add_argument("--skip-fetch", action="store_true",
                    help="recompute only - no API calls")
     p.add_argument("--skip-overlays", action="store_true",
@@ -161,6 +257,14 @@ def main():
     else:
         consumer = not os.path.exists(posts_path)
 
+    # ---- live vs backtest, fast vs full ----
+    live = (args.end == "")
+    # backtest = the past; it does not change, so default to NO fetching there.
+    do_fetch = (live and not args.skip_fetch) or (args.fetch and not args.skip_fetch)
+    # the consumer can never run 01-07 (no raw text on the work laptop) -
+    # asking for --full there still runs just 08/09/10 (the banner says so).
+    full_chain = (args.full or not live) and not consumer
+
     os.makedirs(LOG_DIR, exist_ok=True)
     os.makedirs(SNAP_DIR, exist_ok=True)
     today = datetime.date.today().isoformat()
@@ -172,21 +276,46 @@ def main():
     log(f"  window : {args.start} -> {end_label}", fh)
     log(f"  mode   : {'CONSUMER (work laptop)' if consumer else 'PRODUCER'} "
         f"(posts.parquet {'present' if os.path.exists(posts_path) else 'absent'})", fh)
+    log(f"  path   : {'LIVE fast (incremental aggregates + 08/09/10)' if (live and not full_chain) else 'FULL chain (01-10 rebuild)'}"
+        + ("" if not consumer else " [consumer: 08/09/10 only - 01-07 need raw text]"), fh)
+    log(f"  fetch  : {'yes' if do_fetch else 'no (backtest or --skip-fetch)'}", fh)
     log("=" * 60, fh)
 
-    # ---- 1. FETCH (raw only; the append step below owns the store) ----
-    if not args.skip_fetch:
+    # ---- 0. NOTEBOOK PRE-FLIGHT: validate (and auto-repair) before running ----
+    if not dry and not check_and_repair_notebooks(fh):
+        log("ABORT: some notebooks are broken and could not be restored", fh)
+        return 1
+
+    # The window travels to every child process (notebooks 01 and 11-14, and
+    # pull_bloomberg_prices.py) through these two env vars, so --start/--end
+    # overrides reach everything.
+    os.environ["PIPELINE_START_DATE"] = args.start
+    os.environ["PIPELINE_END_DATE"] = args.end
+
+    # ---- 1. FETCH (raw only; the append steps below own the stores) ----
+    if do_fetch:
         run([py, "api_calls/fetch_all.py", "--no-merge"], fh, dry, show=True)
     else:
-        log("fetch skipped (--skip-fetch)", fh)
+        log("fetch skipped", fh)
 
-    # ---- 2. APPEND into the right store (idempotent either way) ----
+    # ---- 2. APPEND into the right store(s) (idempotent either way) ----
     if consumer:
         log("folding live raw -> GIC_RAW_DATA + hydrate (close Jupyter first!)", fh)
         run([py, "api_calls/append_live_to_gic.py"], fh, dry, show=True)
     else:
         log("merging live raw -> posts.parquet (close Jupyter first!)", fh)
         run([py, "data_ingestion/scripts/merge_live.py"], fh, dry, show=True)
+        if live and not full_chain:
+            # LIVE FAST PATH: recompute the last ~45 days of the aggregates
+            # straight from posts.parquet and splice them onto the untouched
+            # history. Same aggregation code as the notebooks, minutes not
+            # hours, and always in sync with the raw store.
+            log("live fast path: refreshing the aggregate tail from posts.parquet", fh)
+            code = run([py, "data_ingestion/scripts/refresh_recent_aggregates.py"],
+                       fh, dry, show=True)
+            if code != 0:
+                log("ABORT: aggregate tail refresh failed", fh)
+                return 1
 
     # On the work laptop make sure data/processed reflects the latest
     # GIC_RAW_DATA (covers a fresh `git pull` as well as a local append) so the
@@ -197,24 +326,17 @@ def main():
         log("hydrated GIC_RAW_DATA -> data/processed", fh)
 
     # ---- 3. COMPUTE: notebooks in place ----
-    notebooks = CONSUMER_NOTEBOOKS if consumer else PRODUCER_NOTEBOOKS
-    if not consumer:
-        # notebook 01 reads the window; empty END => open-ended (live)
-        os.environ["PIPELINE_START_DATE"] = args.start
-        os.environ["PIPELINE_END_DATE"] = args.end
+    notebooks = FULL_CHAIN_NOTEBOOKS if full_chain else SIGNAL_NOTEBOOKS
+    if full_chain:
         log(f"notebook window: START={args.start}  END={end_label}", fh)
     else:
-        log(f"consumer: notebooks 08/09/10 off GIC aggregates "
-            f"(window {args.start} -> {end_label} already in the aggregates)", fh)
+        log(f"fast path: notebooks 08/09/10 off the aggregates "
+            f"(window {args.start} -> {end_label})", fh)
     for nb in notebooks:
-        log(f"running notebook {nb} (this can take a while; output streams below)", fh)
-        code = run([py, "-m", "jupyter", "nbconvert", "--to", "notebook",
-                    "--execute", "--inplace", f"notebooks/{nb}.ipynb",
-                    "--ExecutePreprocessor.timeout=3600"], fh, dry, show=True)
+        code = run_notebook(nb, fh, dry)
         if code != 0:
             log(f"ABORT: notebook {nb} failed - later steps skipped", fh)
             return 1
-        log(f"ok   {nb}", fh)
 
     # ---- 4. SNAPSHOT the signals (never revised) ----
     import shutil
@@ -235,16 +357,14 @@ def main():
         prices_path = os.path.join(ROOT, "data", "prices", "prices.parquet")
         if os.path.exists(prices_path):
             for nb in OVERLAY_NOTEBOOKS:
-                log(f"rendering overlay {nb} (output streams below)", fh)
-                run([py, "-m", "jupyter", "nbconvert", "--to", "notebook",
-                     "--execute", "--inplace", f"notebooks/{nb}.ipynb",
-                     "--ExecutePreprocessor.timeout=1800"], fh, dry, show=True)
+                run_notebook(nb, fh, dry, timeout=1800)
         else:
             log("no data/prices/prices.parquet - skipped overlays 11-14. Open the "
                 "Bloomberg Terminal (and pip install blpapi), then re-run.", fh)
 
-    # ---- 5. PUBLISH aggregates to GIC_RAW_DATA (producer only; the consumer's
-    #         append step already wrote GIC_RAW_DATA + hydrated) ----
+    # ---- 5. PUBLISH aggregates to GIC_RAW_DATA (producer only; the fast path
+    #         spliced data/processed, so exporting keeps GIC in step with it.
+    #         The consumer's append step already wrote GIC directly.) ----
     if not consumer and not dry:
         from src import gic_data
         log("publishing aggregates -> GIC_RAW_DATA", fh)

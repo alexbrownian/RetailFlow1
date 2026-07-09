@@ -238,6 +238,22 @@ THEME_ETFS: dict[str, str] = {
     "consumer_retail": "XLY",
 }
 
+# Some primary anchors only started trading recently (IBIT Jan-2024,
+# MAGS Apr-2023, EUAD 2024, DTCR renamed 2024...). For a window BEFORE the
+# anchor existed, the overlay notebooks fall back down this list until a
+# symbol with price data in the window is found - so a thematic chart is
+# never empty just because the modern ETF is younger than the window.
+# The price puller requests ALL of these too, so the fallback always has data.
+THEME_ETF_FALLBACKS: dict[str, list[str]] = {
+    "crypto": ["IBIT", "BITO", "GBTC"],       # spot ETF -> futures ETF -> trust
+    "ai_megacap": ["MAGS", "QQQ"],            # MAGS young -> Nasdaq-100 proxy
+    "ai": ["AIQ", "BOTZ", "QQQ"],
+    "datacenters": ["DTCR", "SRVR", "EQIX"],  # ETF renamed/young -> REIT proxy
+    "europe_defense": ["EUAD", "ITA"],        # EUAD young -> US defense proxy
+    "uranium_nuclear": ["URA", "CCJ"],
+    "memory": ["SMH", "MU"],
+}
+
 # Tokens are runs of letters/digits in the lowercased text, so "0DTE" and
 # "3nm" survive as single tokens. Anything with a space, hyphen or dot in
 # the keyword is treated as a phrase and substring-matched instead.

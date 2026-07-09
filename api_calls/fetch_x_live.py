@@ -85,18 +85,26 @@ def load_env():
             "X_BEARER_TOKEN": get("X_BEARER_TOKEN")}
 
 
-def build_queries():
-    """Cashtag queries chunked to stay well under any query-length limit."""
+def build_queries(chunk_size=6, week_filter=False):
+    """Cashtag queries chunked to stay well under any query-length limit.
+    Smaller chunks = more queries (more credits) but far better coverage per
+    symbol, because each request returns up to PAGE_SIZE tweets for its whole
+    chunk. week_filter adds since:<7 days ago> - the trading signals run on a
+    1-WEEK lookback, so a week of posts is what the live pull must cover."""
     core = {"GME", "AMC", "NVDA", "TSLA", "AAPL", "PLTR", "COIN", "MSTR", "SMCI"}
     symbols = sorted(set(THEME_ETFS.values()) | core)
+    suffix = " lang:en -is:retweet"
+    if week_filter:
+        week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+        suffix += f" since:{week_ago}"
     queries, chunk = [], []
     for sym in symbols:
         chunk.append(f"${sym}")
-        if len(chunk) == 12:                     # ~12 cashtags per query
-            queries.append(f"({' OR '.join(chunk)}) lang:en -is:retweet")
+        if len(chunk) == chunk_size:
+            queries.append(f"({' OR '.join(chunk)}){suffix}")
             chunk = []
     if chunk:
-        queries.append(f"({' OR '.join(chunk)}) lang:en -is:retweet")
+        queries.append(f"({' OR '.join(chunk)}){suffix}")
     return queries
 
 
@@ -170,33 +178,59 @@ def fetchlayer_test(key):
     return 0
 
 
-def fetchlayer_poll(key, max_tweets):
+def fetchlayer_poll(key, max_tweets, max_credits=60):
+    """TWO passes over the cashtag chunks (this is where the volume comes
+    from - the signals need a WEEK of X chatter, not a trickle):
+      1. product=Top     of the last 7 days - the most POPULAR tweets, the
+                         main input for the 1-week trading lookback
+      2. product=Latest  - the newest tweets, so nothing recent is missed
+    Dedup on tweet id (here and at merge time) makes overlap harmless."""
     rows, used = [], 0
     per_chunk = min(PAGE_SIZE, max(10, max_tweets))
-    for query in build_queries():
-        if len(rows) >= max_tweets:
+    passes = [("Top", build_queries(week_filter=True)),
+              ("Latest", build_queries(week_filter=False))]
+    stopped = False
+    for product, queries in passes:
+        if stopped:
             break
-        try:
-            r = fetchlayer_search(key, query, per_chunk)
-        except Exception as exc:
-            print(f"[warn] query failed: {exc}")
-            continue
-        used += 1
-        if r.status_code in (402, 429):
-            print(f"[stop] FetchLayer says {r.status_code} (credits/rate) - "
-                  "ending run; next run continues")
-            break
-        if r.status_code != 200:
-            print(f"[warn] query {r.status_code}: {r.text[:120]}")
-            continue
-        payload = r.json()
-        results = (payload.get("results") or payload.get("tweets")
-                   or payload.get("data") or [])
-        for t in results:
-            row = _fl_row(t)
-            if row:
-                rows.append(row)
-        time.sleep(PAUSE_S)
+        for query in queries:
+            if len(rows) >= max_tweets:
+                stopped = True
+                break
+            if used >= max_credits:
+                print(f"[stop] hit the per-run credit cap ({max_credits})")
+                stopped = True
+                break
+            try:
+                r = requests.post(FETCHLAYER_URL,
+                                  headers={"Authorization": f"Bearer {key}",
+                                           "Content-Type": "application/json"},
+                                  json={"query": query, "product": product,
+                                        "count": per_chunk},
+                                  timeout=30)
+            except Exception as exc:
+                print(f"[warn] query failed: {exc}")
+                continue
+            used += 1
+            if r.status_code in (402, 429):
+                print(f"[stop] FetchLayer says {r.status_code} (credits/rate) - "
+                      "ending run; next run continues")
+                stopped = True
+                break
+            if r.status_code != 200:
+                print(f"[warn] query ({product}) {r.status_code}: {r.text[:120]}")
+                continue
+            payload = r.json()
+            results = (payload.get("results") or payload.get("tweets")
+                       or payload.get("data") or [])
+            got = 0
+            for t in results:
+                row = _fl_row(t)
+                if row:
+                    rows.append(row)
+                    got += 1
+            print(f"  {product:<6} | {got:>3} tweets | {query[:60]}")
+            time.sleep(PAUSE_S)
     print(f"fetchlayer: {used} credits used this run")
     return rows[:max_tweets]
 
@@ -257,8 +291,10 @@ def main():
     p = argparse.ArgumentParser(description="Live X ingestion (FetchLayer or official v2 API)")
     p.add_argument("--test", action="store_true",
                    help="ONE small call, prints the tweets, writes nothing")
-    p.add_argument("--max-tweets", type=int, default=300,
-                   help="budget cap per run")
+    p.add_argument("--max-tweets", type=int, default=1500,
+                   help="budget cap per run (Top-of-week + Latest passes)")
+    p.add_argument("--max-credits", type=int, default=60,
+                   help="FetchLayer credit cap per run (1 credit per request)")
     args = p.parse_args()
 
     env = load_env()
@@ -283,7 +319,7 @@ def main():
         print("TEST PASSED" if rows else "TEST FAILED - see messages above")
         return 0 if rows else 1
 
-    rows = (fetchlayer_poll(env["FETCHLAYER_API_KEY"], args.max_tweets)
+    rows = (fetchlayer_poll(env["FETCHLAYER_API_KEY"], args.max_tweets, args.max_credits)
             if backend == "fetchlayer"
             else official_poll(env["X_BEARER_TOKEN"], args.max_tweets))
     if not rows:

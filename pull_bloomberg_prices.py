@@ -40,8 +40,13 @@ import pandas as pd
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
-from update_data import START_DATE, END_DATE, PRICE_TOP_N   # one place to edit
-from src.themes import THEME_ETFS                            # theme -> ETF map
+from update_data import START_DATE as _START, END_DATE as _END, PRICE_TOP_N
+from src.themes import THEME_ETFS, THEME_ETF_FALLBACKS       # theme -> ETF map
+
+# update_data.py exports --start/--end overrides through these env vars, so a
+# one-off window override reaches this script too (falls back to the file).
+START_DATE = os.environ.get("PIPELINE_START_DATE") or _START
+END_DATE = os.environ.get("PIPELINE_END_DATE", _END)
 
 PROCESSED = os.path.join(ROOT, "data", "processed")
 PRICES_DIR = os.path.join(ROOT, "data", "prices")
@@ -75,7 +80,10 @@ def build_symbol_universe():
     """Return a sorted list of plain symbols (tickers + ETFs) to price."""
     symbols = set()
 
-    # top-N most-mentioned tickers over the window
+    # top-N most-mentioned tickers over the window, PLUS the top-N of the
+    # last 60 days. The overlays auto-pick their tickers at render time, and
+    # a name that got loud only recently can out-rank the whole-window top -
+    # pulling both sets is what stops the "no price rows for X" skips.
     counts = _read("daily_ticker_counts.parquet")
     if counts is not None and len(counts):
         c = counts.copy()
@@ -86,9 +94,16 @@ def build_symbol_universe():
         top = (c.groupby("ticker")["mention_count"].sum()
                .sort_values(ascending=False).head(PRICE_TOP_N).index.tolist())
         symbols.update(top)
+        recent = c[c["date"] >= hi - pd.Timedelta(days=60)]
+        top_recent = (recent.groupby("ticker")["mention_count"].sum()
+                      .sort_values(ascending=False).head(PRICE_TOP_N).index.tolist())
+        symbols.update(top_recent)
 
-    # every theme's ETF
+    # every theme's ETF, plus every fallback anchor (so a backtest window
+    # older than a young ETF can still draw the theme against its fallback)
     symbols.update(THEME_ETFS.values())
+    for fallbacks in THEME_ETF_FALLBACKS.values():
+        symbols.update(fallbacks)
 
     # anything named in the signals
     sig_theme = _read("trade_signals.parquet")
@@ -214,6 +229,17 @@ def main():
     prices.to_parquet(OUT_PATH, index=False)
     print(f"saved {len(prices):,} rows for {prices['symbol'].nunique()} symbols "
           f"-> {OUT_PATH}")
+
+    # COVERAGE REPORT - name every requested symbol that came back empty, so
+    # "no price rows" in the overlays is never a mystery again.
+    got = set(prices["symbol"].unique())
+    missing = [s for s in symbols if s not in got]
+    if missing:
+        print(f"NO DATA for {len(missing)} of {len(symbols)} requested symbols "
+              "(delisted, non-US listing, or younger than the window):")
+        print("  " + ", ".join(missing))
+    else:
+        print("full coverage: every requested symbol returned prices.")
     print("next: open the overlay notebooks (11-14) to compare against your data.")
     return 0
 

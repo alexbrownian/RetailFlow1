@@ -7,8 +7,9 @@ Most days you only need **one** command: `python update_data.py`.
 
 | I want to… | Run |
 |---|---|
-| Refresh everything (live) | `python update_data.py` |
-| Backtest a fixed window | set `END_DATE` in `update_data.py`, then `python update_data.py --skip-fetch` |
+| Refresh everything (LIVE, fast) | `python update_data.py` — pulls a WEEK of top posts, splices the aggregate tail, reruns 08/09/10 + overlays. Minutes. |
+| Backtest a fixed window | set `END_DATE` in `update_data.py`, then `python update_data.py` — auto-runs the FULL chain (01-10), no fetching |
+| Full rebuild while live | `python update_data.py --full` — use after changing START_DATE or to rebuild sentiment from scratch |
 | Recompute without any API call | `python update_data.py --skip-fetch` |
 | Check my FetchLayer key is set | `python api_calls/fetch_all.py --check` |
 | Prove the key works (1 credit) | `python api_calls/fetch_all.py --test` |
@@ -25,11 +26,26 @@ At the top of `update_data.py`:
 ```python
 START_DATE = "2021-01-01"   # inclusive
 END_DATE   = ""             # "" = LIVE (to today);  "2021-11-01" = backtest window
-PRICE_TOP_N = 50            # how many top-mentioned tickers Bloomberg pulls
+PRICE_TOP_N = 150           # how many top-mentioned tickers Bloomberg pulls
 ```
 
-`END_DATE = ""` → live. A date → freeze that regime. This one place drives the
-pipeline, the Bloomberg pull, and the overlay charts.
+`END_DATE = ""` → **live fast path**: fetch a week of the most popular posts
+(Reddit top-of-week + new; X Top + Latest), splice the last ~45 days of the
+aggregates from `posts.parquet`, rerun the signal notebooks (08/09/10), pull
+prices, render overlays 11-14. Minutes, and the 7-day lookback the trading
+signals run on is always fully covered.
+
+A date → **backtest**: the FULL chain (01-10) rebuilds every aggregate for
+exactly that window, then the overlays draw against prices for the same
+window. To check the model in a past regime: set the dates, run the one
+command, open 11-14 and read the plots. This one place drives the pipeline,
+the Bloomberg pull, and the overlay charts (`--start/--end` override it for
+one run, and the override reaches the notebooks and the price pull too).
+
+**Broken-notebook safety (new):** every run first validates all notebooks
+and auto-restores truncated ones from git; executed notebooks are written to
+a temp file and swapped in atomically - an interrupted run can never
+truncate a notebook again.
 
 ---
 
@@ -68,8 +84,10 @@ Same command on **both** machines — it auto-detects which one it's on:
 python update_data.py
 ```
 
-- **Personal laptop** (has `posts.parquet`): appends live posts into it, runs
-  the full notebook chain, publishes `GIC_RAW_DATA`, safety-checks it.
+- **Personal laptop** (has `posts.parquet`): appends live posts into it,
+  splices the aggregate tail (fast - no 01-07 rerun), reruns 08/09/10 +
+  overlays, publishes `GIC_RAW_DATA`, safety-checks it. Pass `--full` when
+  you want the whole chain rebuilt.
 - **Work laptop** (no `posts.parquet`): folds live posts into `GIC_RAW_DATA`,
   hydrates, rebuilds signals, safety-checks it.
 
@@ -95,9 +113,10 @@ SKIP, your `.env` here is missing `FETCHLAYER_KEY`.
 
 1. Edit the window in `update_data.py`, e.g. `START_DATE="2021-01-01"`,
    `END_DATE="2021-11-01"`.
-2. Recompute for that window (no live fetch):
+2. Recompute for that window (backtest mode skips fetching automatically
+   and runs the full 01-10 rebuild):
    ```powershell
-   python update_data.py --skip-fetch
+   python update_data.py
    ```
 3. Match the prices, then look:
    ```powershell

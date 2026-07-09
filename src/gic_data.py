@@ -177,8 +177,8 @@ def _safe_write(df, path):
     tmp = path + ".tmp"
     df.to_parquet(tmp, index=False)
     try:
-        if os.path.exists(path):
-            os.remove(path)
+        # os.replace overwrites the target atomically (on Windows too) -
+        # no separate delete needed, so there is no moment with no file.
         os.replace(tmp, path)
     except PermissionError:
         print("!" * 68)

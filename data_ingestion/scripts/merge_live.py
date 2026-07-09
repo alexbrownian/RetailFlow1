@@ -253,7 +253,8 @@ def main():
           f"= {total_rows:,} rows | new by source: {by_src}")
 
     try:
-        os.remove(args.posts)
+        # os.replace overwrites the target atomically (on Windows too) -
+        # no separate delete, so there is never a moment with no posts file.
         os.replace(out_path, args.posts)
     except PermissionError:
         print()

@@ -124,33 +124,54 @@ def fetchlayer_test(key):
     return 0
 
 
-def fetchlayer_poll(key, limit):
+def fetchlayer_poll(key, limit, max_credits=60):
+    """TWO passes per subreddit (the 1-week lookback is what the trading
+    signals run on, so we want a WEEK of posts, not just the newest few):
+      1. sort=new          - the newest posts (catches everything recent)
+      2. sort=top, week    - the most POPULAR posts of the last 7 days
+                             (high-engagement posts older runs may have missed)
+    Costs ~2 credits per subreddit per run. Dedup (here on id, and again at
+    merge time) means overlap between the two passes is harmless."""
     headers = {"Authorization": f"Bearer {key}"}
     all_posts, used = [], 0
+    stopped = False
+    # (sort, extra request fields) - "timeframe"/"t" both sent so whichever
+    # name FetchLayer expects for the top-of-week window is covered.
+    passes = [("new", {}),
+              ("top", {"timeframe": "week", "t": "week"})]
     for sub in tracked_subs():
-        try:
-            r = requests.post(FETCHLAYER_URL, headers=headers,
-                              json={"subreddit": sub, "sort": "new", "limit": limit},
-                              timeout=30)
-        except Exception as exc:
-            print(f"[warn] {sub}: {exc}")
-            continue
-        used += 1
-        if r.status_code in (402, 429):
-            print(f"[stop] FetchLayer says {r.status_code} (credits/rate) - "
-                  "ending run; next run continues")
+        if stopped:
             break
-        if r.status_code != 200:
-            print(f"[warn] {sub}: {r.status_code} {r.text[:120]}")
-            continue
-        payload = r.json()
-        posts = (payload.get("items") or payload.get("posts")
-                 or payload.get("results") or [])
-        for p in posts:
-            p["_backend"] = "fetchlayer"
-            p.setdefault("subreddit", sub)
-            all_posts.append(p)
-        time.sleep(PAUSE_S)
+        for sort, extra in passes:
+            if used >= max_credits:
+                print(f"[stop] hit the per-run credit cap ({max_credits})")
+                stopped = True
+                break
+            body = {"subreddit": sub, "sort": sort, "limit": limit}
+            body.update(extra)
+            try:
+                r = requests.post(FETCHLAYER_URL, headers=headers,
+                                  json=body, timeout=30)
+            except Exception as exc:
+                print(f"[warn] {sub} ({sort}): {exc}")
+                continue
+            used += 1
+            if r.status_code in (402, 429):
+                print(f"[stop] FetchLayer says {r.status_code} (credits/rate) - "
+                      "ending run; next run continues")
+                stopped = True
+                break
+            if r.status_code != 200:
+                print(f"[warn] {sub} ({sort}): {r.status_code} {r.text[:120]}")
+                continue
+            payload = r.json()
+            posts = (payload.get("items") or payload.get("posts")
+                     or payload.get("results") or [])
+            for p in posts:
+                p["_backend"] = "fetchlayer"
+                p.setdefault("subreddit", sub)
+                all_posts.append(p)
+            time.sleep(PAUSE_S)
     print(f"fetchlayer: {used} credits used this run")
     return all_posts
 
@@ -223,7 +244,10 @@ def main():
     ap = argparse.ArgumentParser(description="Live Reddit ingestion (FetchLayer or official OAuth)")
     ap.add_argument("--test", action="store_true",
                     help="ONE small call (5 posts from r/wallstreetbets), writes nothing")
-    ap.add_argument("--limit", type=int, default=50, help="posts per subreddit per run")
+    ap.add_argument("--limit", type=int, default=100,
+                    help="posts per subreddit per pass (new + top-of-week)")
+    ap.add_argument("--max-credits", type=int, default=60,
+                    help="FetchLayer credit cap per run (2 passes x 15 subs = 30)")
     args = ap.parse_args()
 
     creds = load_env()
@@ -247,7 +271,7 @@ def main():
         print("TEST PASSED" if posts else "TEST FAILED - see messages above")
         return 0 if posts else 1
 
-    posts = (fetchlayer_poll(creds["FETCHLAYER_API_KEY"], args.limit)
+    posts = (fetchlayer_poll(creds["FETCHLAYER_API_KEY"], args.limit, args.max_credits)
              if backend == "fetchlayer" else official_poll(creds, args.limit))
     if not posts:
         print("no posts fetched this run")
