@@ -207,6 +207,86 @@ THEME_KEYWORDS: dict[str, list[str]] = {
         "consumer sentiment", "discretionary", "e-commerce",
         "holiday sales", "Black Friday", "back to school",
     ],
+    "cybersecurity": [
+        "cybersecurity", "cyber attack", "cyberattack", "ransomware",
+        "data breach", "hacked", "hackers", "phishing", "zero-day",
+        "CrowdStrike", "Palo Alto", "Fortinet", "Zscaler",
+    ],
+    "fintech_payments": [
+        "fintech", "payments", "digital wallet", "buy now pay later",
+        "PayPal", "Visa", "Mastercard", "Stripe", "neobank",
+        "payment processing", "interchange",
+    ],
+    "gaming_esports": [
+        "gaming", "video game", "video games", "esports", "console",
+        "playstation", "xbox", "nintendo", "game pass", "steam deck",
+        "gamer", "gamers",
+    ],
+    "travel_airlines": [
+        "airline", "airlines", "travel demand", "bookings", "cruise",
+        "cruise line", "hotel occupancy", "revenge travel", "air travel",
+        "airfare",
+    ],
+    "housing_builders": [
+        "homebuilder", "homebuilders", "housing starts", "new homes",
+        "home construction", "housing supply", "mortgage applications",
+        "housing shortage",
+    ],
+    "robotics_automation": [
+        "robotics", "robots", "humanoid", "humanoids", "automation",
+        "industrial automation", "robotaxi", "self-driving", "autonomous vehicle",
+    ],
+    "space": [
+        "space launch", "rocket launch", "satellite", "satellites",
+        "SpaceX", "Starlink", "orbital", "space station", "moon landing",
+        "space economy",
+    ],
+    "quantum_computing": [
+        "quantum computing", "quantum computer", "qubit", "qubits",
+        "quantum chip", "quantum supremacy", "error correction",
+    ],
+    "weight_loss_glp1": [
+        "GLP-1", "ozempic", "wegovy", "mounjaro", "zepbound",
+        "semaglutide", "tirzepatide", "weight loss drug", "obesity drug",
+    ],
+    "cannabis": [
+        "cannabis", "marijuana", "weed stock", "weed stocks",
+        "dispensary", "rescheduling", "legalization",
+    ],
+    "solar": [
+        "solar", "solar panel", "solar panels", "rooftop solar",
+        "photovoltaic", "net metering", "solar farm",
+    ],
+    "agriculture_food": [
+        "agriculture", "farmland", "fertilizer", "crop", "crops",
+        "grain", "wheat", "corn prices", "food prices", "harvest",
+    ],
+    "shipping_logistics": [
+        "shipping", "freight", "container rates", "supply chain",
+        "trucking", "railroad", "railroads", "logistics", "port congestion",
+        "red sea",
+    ],
+    "small_caps": [
+        "small caps", "small cap", "russell 2000", "microcap", "microcaps",
+        "small-cap rotation",
+    ],
+    "japan": [
+        "nikkei", "yen", "bank of japan", "carry trade",
+        "japanese stocks", "japan stocks",
+    ],
+    "utilities_power": [
+        "utilities", "power grid", "electricity demand", "power plant",
+        "grid buildout", "electricity prices", "power purchase agreement",
+    ],
+    "media_streaming": [
+        "streaming", "subscribers", "box office", "netflix", "disney",
+        "ad tier", "streaming wars", "cord cutting",
+    ],
+    "infrastructure": [
+        "infrastructure", "construction spending", "roads and bridges",
+        "grid upgrade", "data center construction", "megaproject",
+        "infrastructure bill",
+    ],
 }
 
 # ---------------------------------------------------------------------------
@@ -236,6 +316,24 @@ THEME_ETFS: dict[str, str] = {
     "china_geopolitics": "KWEB",
     "financials": "XLF",
     "consumer_retail": "XLY",
+    "cybersecurity": "CIBR",
+    "fintech_payments": "IPAY",
+    "gaming_esports": "ESPO",
+    "travel_airlines": "JETS",
+    "housing_builders": "ITB",
+    "robotics_automation": "BOTZ",
+    "space": "ARKX",            # young (2021); UFO/ITA fallbacks below
+    "quantum_computing": "QTUM",
+    "weight_loss_glp1": "LLY",  # single-stock proxy (no clean GLP-1 ETF with history)
+    "cannabis": "MSOS",         # young (2021)
+    "solar": "TAN",
+    "agriculture_food": "MOO",
+    "shipping_logistics": "IYT",
+    "small_caps": "IWM",
+    "japan": "EWJ",
+    "utilities_power": "XLU",
+    "media_streaming": "XLC",
+    "infrastructure": "PAVE",
 }
 
 # Some primary anchors only started trading recently (IBIT Jan-2024,
@@ -252,6 +350,9 @@ THEME_ETF_FALLBACKS: dict[str, list[str]] = {
     "europe_defense": ["EUAD", "ITA"],        # EUAD young -> US defense proxy
     "uranium_nuclear": ["URA", "CCJ"],
     "memory": ["SMH", "MU"],
+    "space": ["ARKX", "ITA"],           # ARKX starts 2021-03
+    "cannabis": ["MSOS", "TLRY"],       # MSOS starts 2020-09
+    "weight_loss_glp1": ["LLY", "XLV"],
 }
 
 # Tokens are runs of letters/digits in the lowercased text, so "0DTE" and
@@ -412,6 +513,64 @@ THEME_TICKERS: dict[str, set[str]] = {
     "consumer_retail": {
         "WMT", "AMZN", "TGT", "COST", "HD", "LOW", "NKE", "SBUX",
         "MCD", "LULU", "XLY",
+    },
+    "cybersecurity": {
+        "CRWD", "PANW", "ZS", "OKTA", "FTNT", "CYBR", "TENB", "RPD",
+        "CIBR", "HACK",
+    },
+    "fintech_payments": {
+        "PYPL", "SQ", "XYZ", "V", "MA", "AXP", "AFRM", "SOFI", "HOOD",
+        "TOST", "UPST", "IPAY", "FINX",
+    },
+    "gaming_esports": {
+        "RBLX", "EA", "TTWO", "U", "SONY", "NTDOY", "MSFT", "DKNG",
+        "ESPO",
+    },
+    "travel_airlines": {
+        "DAL", "UAL", "AAL", "LUV", "ABNB", "BKNG", "EXPE", "CCL",
+        "RCL", "NCLH", "MAR", "HLT", "JETS",
+    },
+    "housing_builders": {
+        "DHI", "LEN", "PHM", "NVR", "TOL", "KBH", "BLDR", "ITB", "XHB",
+    },
+    "robotics_automation": {
+        "ISRG", "TER", "ROK", "SYM", "PATH", "TSLA", "BOTZ", "ROBO",
+    },
+    "space": {
+        "RKLB", "LUNR", "ASTS", "SPCE", "BA", "RDW", "ARKX",
+    },
+    "quantum_computing": {
+        "IONQ", "RGTI", "QBTS", "QUBT", "IBM", "QTUM",
+    },
+    "weight_loss_glp1": {
+        "LLY", "NVO", "HIMS", "VKTX", "AMGN",
+    },
+    "cannabis": {
+        "TLRY", "CGC", "ACB", "SNDL", "MSOS",
+    },
+    "solar": {
+        "ENPH", "SEDG", "FSLR", "RUN", "NXT", "ARRY", "TAN",
+    },
+    "agriculture_food": {
+        "ADM", "BG", "DE", "MOS", "NTR", "CF", "MOO", "DBA",
+    },
+    "shipping_logistics": {
+        "FDX", "UPS", "ZIM", "MATX", "UNP", "CSX", "ODFL", "GXO", "IYT",
+    },
+    "small_caps": {
+        "IWM",
+    },
+    "japan": {
+        "EWJ", "DXJ",
+    },
+    "utilities_power": {
+        "XLU", "NEE", "VST", "CEG", "D", "SO", "GEV",
+    },
+    "media_streaming": {
+        "NFLX", "DIS", "WBD", "PARA", "ROKU", "SPOT", "XLC",
+    },
+    "infrastructure": {
+        "CAT", "VMC", "MLM", "URI", "PWR", "PAVE",
     },
 }
 

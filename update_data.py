@@ -85,11 +85,14 @@ FULL_CHAIN_NOTEBOOKS = ["01_clean_data", "02_mentions_over_time",
 SIGNAL_NOTEBOOKS = ["08_ticker_conviction", "09_theme_conviction",
                     "10_trading_signals"]
 # Bloomberg price overlays - rendered at the end of every run (need prices).
+# Ordered to read naturally: mentions -> velocity -> conviction -> signals,
+# tickers before themes.
 OVERLAY_NOTEBOOKS = ["11_overlay_ticker_mentions",
                      "12_overlay_ticker_first_derivative",
-                     "13_overlay_theme_conviction",
-                     "14_overlay_trading_signals",
-                     "15_overlay_theme_trading_signals"]
+                     "13_overlay_theme_first_derivative",
+                     "14_overlay_theme_conviction",
+                     "15_overlay_trading_signals",
+                     "16_overlay_theme_trading_signals"]
 SIGNAL_FILES = ["trade_signals.parquet", "trade_signals_tickers.parquet"]
 
 # Columns that would leak the raw posts - the safety check forbids them in the
@@ -199,6 +202,63 @@ def run_notebook(nb, fh, dry, timeout=3600):
     os.replace(tmp, src)                       # atomic on the same drive
     log(f"ok   {nb}", fh)
     return 0
+
+
+def _compact(n):
+    """1234 -> '1.2k', 2500000 -> '2.5M' - keeps the coverage table narrow."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}k"
+    return str(int(n))
+
+
+def print_data_coverage(fh, consumer):
+    """A year x month table of how much data we hold, per source - so gaps
+    (like the X hole across 2021-2023) are visible at a glance after every
+    run. Producer counts POSTS from posts.parquet; the work laptop has no
+    raw store, so it counts MENTIONS from the committed aggregates instead
+    (same shape of table, same gaps)."""
+    import pandas as pd
+
+    if not consumer:
+        import pyarrow.parquet as pq
+        path = os.path.join(ROOT, "data", "processed", "posts.parquet")
+        if not os.path.exists(path):
+            return
+        df = pq.read_table(path, columns=["date", "source"]).to_pandas()
+        value_label = "posts"
+    else:
+        path = os.path.join(ROOT, "data", "processed",
+                            "daily_ticker_counts_by_source.parquet")
+        if not os.path.exists(path):
+            return
+        df = pd.read_parquet(path)
+        value_label = "ticker mentions"
+
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
+    df["year"] = df["date"].dt.year
+    df["month"] = df["date"].dt.month
+
+    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    for source in sorted(df["source"].unique()):
+        one = df[df["source"] == source]
+        if not consumer:
+            counts = one.groupby(["year", "month"]).size()
+        else:
+            counts = one.groupby(["year", "month"])["mention_count"].sum()
+        log(f"--- DATA COVERAGE: {value_label} per month | source = {source} ---", fh)
+        header = "  year " + "".join(f"{m:>7}" for m in months)
+        log(header, fh)
+        for year in sorted(one["year"].unique()):
+            cells = []
+            for mo in range(1, 13):
+                n = counts.get((year, mo), 0)
+                cells.append(f"{_compact(n):>7}" if n else f"{'.':>7}")
+            log(f"  {year} " + "".join(cells), fh)
+    log("('.' = NO data that month - that is a gap, not a quiet month)", fh)
 
 
 def verify_gic(fh):
@@ -358,6 +418,10 @@ def main():
         from src import gic_data
         gic_data.hydrate(verbose=False)
         log("hydrated GIC_RAW_DATA -> data/processed", fh)
+
+    # ---- 2b. DATA COVERAGE: what do we actually hold, month by month? ----
+    if not dry:
+        print_data_coverage(fh, consumer)
 
     # ---- 3. COMPUTE: notebooks in place ----
     notebooks = FULL_CHAIN_NOTEBOOKS if full_chain else SIGNAL_NOTEBOOKS

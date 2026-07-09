@@ -30,9 +30,10 @@ PRICES = os.path.join(ROOT, "data", "prices", "prices.parquet")
 OVERLAYS = [
     ("11_overlay_ticker_mentions",         "daily_ticker_counts.parquet",   "hydrate"),
     ("12_overlay_ticker_first_derivative", "daily_ticker_counts.parquet",   "hydrate"),
-    ("13_overlay_theme_conviction",        "daily_theme_conviction.parquet", "notebook 09"),
-    ("14_overlay_trading_signals",         "trade_signals_tickers.parquet", "notebook 10"),
-    ("15_overlay_theme_trading_signals",   "trade_signals.parquet",         "notebook 10"),
+    ("13_overlay_theme_first_derivative",  "daily_theme_counts.parquet",    "hydrate"),
+    ("14_overlay_theme_conviction",        "daily_theme_conviction.parquet", "notebook 09"),
+    ("15_overlay_trading_signals",         "trade_signals_tickers.parquet", "notebook 10"),
+    ("16_overlay_theme_trading_signals",   "trade_signals.parquet",         "notebook 10"),
 ]
 
 

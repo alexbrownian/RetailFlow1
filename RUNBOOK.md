@@ -16,7 +16,7 @@ Most days you only need **one** command: `python update_data.py`.
 | See what live data landed | `python check_live_ingestion.py` |
 | Pull Bloomberg prices | `python pull_bloomberg_prices.py` |
 | Preview the Bloomberg pull only | `python pull_bloomberg_prices.py --dry-run` |
-| Compare data vs price | open notebooks **11–14**, Run All (auto-picks tickers) |
+| Compare data vs price | open notebooks **11–16**, Run All (auto-picks tickers) |
 | Open the dashboard | `python -m streamlit run dashboard/app.py` |
 
 ## The one switch: the window
@@ -147,12 +147,15 @@ local — it is gitignored (Bloomberg redistribution terms).
 
 ## Scenario: compare my data against price (overlays)
 
-Just open and Run All — no typing, they auto-pick the names from the data:
+Just open and Run All — no typing, they auto-pick the names from the data.
+Ordered mentions → velocity → conviction → signals, tickers before themes:
 
-- **11** most-mentioned tickers: mentions vs price
+- **11** most-mentioned tickers: mentions (share of chatter) vs price
 - **12** most-mentioned tickers: attention first-derivative vs price
-- **13** highest-sentiment themes: conviction vs the theme's ETF price
-- **14** most-signalled symbols: price with BUY/SELL markers
+- **13** most-mentioned themes: attention first-derivative vs anchor ETF
+- **14** highest-sentiment themes: conviction vs the theme's ETF price
+- **15** most-signalled symbols: BUY/SELL conviction clusters + report card + high-conviction backtest (PnL/Sharpe)
+- **16** same as 15, themes only
 
 `HOW_MANY` at the top of each just controls how many charts to draw.
 

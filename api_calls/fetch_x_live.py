@@ -57,7 +57,22 @@ OUT_FILE = os.path.join(PROJECT_ROOT, "data", "raw", "X Data", "x_api_live.csv.z
 FETCHLAYER_URL = "https://fetchlayer.dev/api/twitter/search"
 SEARCH_URL = "https://api.x.com/2/tweets/search/recent"
 PAGE_SIZE = 100          # max_results per request (10-100)
-PAUSE_S = 3.0            # polite gap between requests
+PAUSE_S = 5.0            # polite gap between requests (X scraping is the
+                         # expensive endpoint - going faster earns 429s)
+
+# DISCOVERY queries - broad finance chatter, NO fixed tickers. The point:
+# our extractor pulls every valid ticker out of post TEXT, so scraping the
+# week's top finance posts catches names NOBODY put on a list yet (the next
+# GME). min_faves keeps it to posts with real engagement. The targeted
+# cashtag queries below still guarantee the theme anchors are covered.
+DISCOVERY_QUERIES = [
+    '(stocks OR "stock market" OR investing) min_faves:50 lang:en -is:retweet',
+    '("short squeeze" OR "to the moon" OR tendies OR YOLO) min_faves:20 lang:en -is:retweet',
+    '(calls OR puts) (stock OR earnings OR market) min_faves:20 lang:en -is:retweet',
+    '(earnings OR guidance) (beat OR miss OR surged OR crashed) min_faves:20 lang:en -is:retweet',
+    '(bitcoin OR ethereum OR crypto) (buy OR rally OR crash) min_faves:50 lang:en -is:retweet',
+    '("bought shares" OR "loading up" OR "all in on") min_faves:10 lang:en -is:retweet',
+]
 STATUS_ID = re.compile(r"/status/(\d+)")
 
 
@@ -187,7 +202,10 @@ def fetchlayer_poll(key, max_tweets, max_credits=60):
     Dedup on tweet id (here and at merge time) makes overlap harmless."""
     rows, used = [], 0
     per_chunk = min(PAGE_SIZE, max(10, max_tweets))
-    passes = [("Top", build_queries(week_filter=True)),
+    week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
+    discovery = [q + f" since:{week_ago}" for q in DISCOVERY_QUERIES]
+    # DISCOVERY first (catch unknown names), then the targeted cashtag chunks.
+    passes = [("Top", discovery + build_queries(week_filter=True)),
               ("Latest", build_queries(week_filter=False))]
     stopped = False
     for product, queries in passes:
@@ -201,20 +219,37 @@ def fetchlayer_poll(key, max_tweets, max_credits=60):
                 print(f"[stop] hit the per-run credit cap ({max_credits})")
                 stopped = True
                 break
-            try:
-                r = requests.post(FETCHLAYER_URL,
-                                  headers={"Authorization": f"Bearer {key}",
-                                           "Content-Type": "application/json"},
-                                  json={"query": query, "product": product,
-                                        "count": per_chunk},
-                                  timeout=30)
-            except Exception as exc:
-                print(f"[warn] query failed: {exc}")
+            # 429 = "too fast", NOT "out of credits" - back off and retry
+            # instead of abandoning the whole run like before.
+            r = None
+            for wait in (0, 30, 90):
+                if wait:
+                    print(f"[rate] 429 - waiting {wait}s, then retrying")
+                    time.sleep(wait)
+                try:
+                    r = requests.post(FETCHLAYER_URL,
+                                      headers={"Authorization": f"Bearer {key}",
+                                               "Content-Type": "application/json"},
+                                      json={"query": query, "product": product,
+                                            "count": per_chunk},
+                                      timeout=(10, 60))
+                except Exception as exc:
+                    print(f"[warn] query failed: {exc}")
+                    r = None
+                    break
+                if r.status_code != 429:
+                    break
+            if r is None:
                 continue
             used += 1
-            if r.status_code in (402, 429):
-                print(f"[stop] FetchLayer says {r.status_code} (credits/rate) - "
-                      "ending run; next run continues")
+            if r.status_code == 429:
+                print("[stop] still rate-limited after two backoffs - ending "
+                      "this run; next run continues where this left off")
+                stopped = True
+                break
+            if r.status_code == 402:
+                print("[stop] FetchLayer says 402 - out of credits; top up or "
+                      "wait for the plan to reset")
                 stopped = True
                 break
             if r.status_code != 200:
