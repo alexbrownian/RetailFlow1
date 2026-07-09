@@ -124,14 +124,25 @@ def fetchlayer_test(key):
     return 0
 
 
-def fetchlayer_poll(key, limit, max_credits=60):
-    """TWO passes per subreddit (the 1-week lookback is what the trading
-    signals run on, so we want a WEEK of posts, not just the newest few):
-      1. sort=new          - the newest posts (catches everything recent)
-      2. sort=top, week    - the most POPULAR posts of the last 7 days
-                             (high-engagement posts older runs may have missed)
+def _timeframe_for(days):
+    """Map a lookback in days onto Reddit's top-post timeframes."""
+    if days <= 1:
+        return "day"
+    if days <= 7:
+        return "week"
+    if days <= 31:
+        return "month"
+    return "year"
+
+
+def fetchlayer_poll(key, limit, max_credits=60, lookback_days=7):
+    """TWO passes per subreddit:
+      1. sort=new             - the newest posts (catches everything recent)
+      2. sort=top, timeframe  - the most POPULAR posts of the lookback window
+                                (high-engagement posts earlier runs missed)
     Costs ~2 credits per subreddit per run. Dedup (here on id, and again at
-    merge time) means overlap between the two passes is harmless."""
+    merge time) means overlap between passes and between runs is harmless -
+    a longer lookback can only ADD posts, never duplicate them."""
     headers = {"Authorization": f"Bearer {key}"}
     all_posts, used = [], 0
     stopped = False
@@ -139,12 +150,13 @@ def fetchlayer_poll(key, limit, max_credits=60):
     max_seconds = 300          # whole-run time budget: never look frozen for long
     subs = tracked_subs()
     total_requests = len(subs) * 2
-    print(f"polling {len(subs)} subreddits x 2 passes (new + top-of-week) = "
+    tf = _timeframe_for(lookback_days)
+    print(f"polling {len(subs)} subreddits x 2 passes (new + top-of-{tf}) = "
           f"{total_requests} requests; progress below")
     # (sort, extra request fields) - "timeframe"/"t" both sent so whichever
-    # name FetchLayer expects for the top-of-week window is covered.
+    # name FetchLayer expects for the top-post window is covered.
     passes = [("new", {}),
-              ("top", {"timeframe": "week", "t": "week"})]
+              ("top", {"timeframe": tf, "t": tf})]
     for sub in subs:
         if stopped:
             break
@@ -276,9 +288,11 @@ def main():
     ap.add_argument("--test", action="store_true",
                     help="ONE small call (5 posts from r/wallstreetbets), writes nothing")
     ap.add_argument("--limit", type=int, default=100,
-                    help="posts per subreddit per pass (new + top-of-week)")
+                    help="posts per subreddit per pass (new + top-of-window)")
     ap.add_argument("--max-credits", type=int, default=60,
                     help="FetchLayer credit cap per run (2 passes x 15 subs = 30)")
+    ap.add_argument("--lookback-days", type=int, default=7,
+                    help="top-post window: how far back the fetch reaches")
     args = ap.parse_args()
 
     creds = load_env()
@@ -302,7 +316,8 @@ def main():
         print("TEST PASSED" if posts else "TEST FAILED - see messages above")
         return 0 if posts else 1
 
-    posts = (fetchlayer_poll(creds["FETCHLAYER_API_KEY"], args.limit, args.max_credits)
+    posts = (fetchlayer_poll(creds["FETCHLAYER_API_KEY"], args.limit,
+                             args.max_credits, args.lookback_days)
              if backend == "fetchlayer" else official_poll(creds, args.limit))
     if not posts:
         print("no posts fetched this run")

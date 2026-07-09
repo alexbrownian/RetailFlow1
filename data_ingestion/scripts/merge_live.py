@@ -152,23 +152,18 @@ def print_snapshot(df):
     red = df[df["source"] == "reddit"]
     if len(red):
         counts = red["subreddit"].value_counts()
-        print(f"\nreddit subreddits ({len(counts)}):")
-        for sub, n in counts.head(20).items():
-            print(f"  r/{sub:<22} {n:>6,}")
+        top8 = " | ".join(f"r/{s} {n}" for s, n in counts.head(8).items())
+        print(f"\nreddit subreddits ({len(counts)}): {top8}")
 
-    for src, cols in [("reddit", ["date", "subreddit", "author", "title"]),
-                      ("x", ["date", "author", "title"]),
-                      ("stocktwits", ["date", "author", "title"])]:
+    for src in ("reddit", "x", "stocktwits"):
         sub = df[df["source"] == src]
         if not len(sub):
             continue
-        disp = sub.sort_values("date").tail(5)[cols].copy()
-        # flatten newlines + truncate so each post is one tidy line
+        disp = sub.sort_values("date").tail(3)[["date", "title"]].copy()
         disp["title"] = (disp["title"].astype(str)
                          .str.replace(r"\s+", " ", regex=True).str.slice(0, 70))
-        disp["author"] = disp["author"].astype(str).str.slice(0, 16)
-        print(f"\n--- {src}: newest {min(5, len(sub))} of {len(sub):,} ---")
-        print(disp.to_string(index=False))
+        print(f"\n--- {src}: newest 3 of {len(sub):,} ---")
+        print(disp.to_string(index=False, header=False))
     print("=" * 64 + "\n")
 
 
@@ -215,12 +210,15 @@ def main():
                                         "posts_live_merged.parquet")
     writer = pq.ParquetWriter(out_path, SCHEMA, compression="zstd")
     kept = 0
-    for i in range(pf.metadata.num_row_groups):
+    n_groups = pf.metadata.num_row_groups
+    for i in range(n_groups):
         t = conform(pf.read_row_group(i))
         writer.write_table(t)
         kept += t.num_rows
-        print(f"  row group {i + 1}/{pf.metadata.num_row_groups} "
-              f"({kept:,} existing rows copied)", flush=True)
+        # one progress line every ~10 groups keeps the output readable
+        if (i + 1) % 10 == 0 or i + 1 == n_groups:
+            print(f"  copying store... {i + 1}/{n_groups} row groups "
+                  f"({kept:,} rows)", flush=True)
     writer.write_table(pa.Table.from_pandas(fresh, schema=SCHEMA, preserve_index=False))
     writer.close()
     try:

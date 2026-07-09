@@ -112,6 +112,11 @@ def main():
                    help="fold new posts into ABSTRACTED_DATA (text-free "
                         "aggregates) instead of posts.parquet - the "
                         "internal-machine path")
+    p.add_argument("--lookback-days", type=int, default=7,
+                   help="how far back the fetch reaches (top posts of the "
+                        "last N days); overlap never duplicates")
+    p.add_argument("--max-credits", type=int, default=60,
+                   help="FetchLayer credit cap per source per run")
     args = p.parse_args()
 
     # ---- TESTING MODE ---------------------------------------------------
@@ -129,11 +134,16 @@ def main():
 
     print()
     failed = []
+    # the two knobs travel to every fetcher that understands them
+    knobs = {"fetch_reddit_live.py": ["--lookback-days", str(args.lookback_days),
+                                      "--max-credits", str(args.max_credits)],
+             "fetch_x_live.py": ["--lookback-days", str(args.lookback_days),
+                                 "--max-credits", str(args.max_credits)]}
     for name, will_call, _, script_args in plan:
         if not will_call:
             continue
         print(f"--- {name} ---")
-        if run_script(script_args) != 0:
+        if run_script(script_args, extra=knobs.get(script_args[0])) != 0:
             failed.append(name)
 
     print("\nfetch done." + (f" FAILED: {', '.join(failed)}" if failed else " all sources ok."))

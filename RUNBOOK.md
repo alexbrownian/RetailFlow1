@@ -7,9 +7,9 @@ Most days only one command is needed: `python update_data.py`.
 
 | Task | Command |
 |---|---|
-| Refresh everything (LIVE, fast) | `python update_data.py` — pulls a week of top posts, splices the aggregate tail, reruns 08/09/10 + overlays 11–16 |
-| Backtest a fixed window | set `END_DATE` in `update_data.py`, then `python update_data.py` — full chain (01–10), no fetching |
-| Full rebuild while live | `python update_data.py --full` — after changing START_DATE or the theme definitions |
+| Refresh everything (LIVE, fast) | `python update_data.py` — pulls the lookback window of top posts, splices the aggregate tail, reruns 08/09/10 + overlays 11–16 |
+| Backtest / view a past window | set `END_DATE` in `update_data.py`, then `python update_data.py` — instant: the aggregates are window-independent, only the overlays re-render |
+| Build aggregates over ALL history | `python update_data.py --full` — run ONCE (and after changing BUILD_START_DATE or the theme definitions); afterwards every window has data |
 | Recompute without API calls | `python update_data.py --skip-fetch` |
 | Check the FetchLayer key | `python api_calls/fetch_all.py --check` (no calls) / `--test` (1 credit) |
 | See what live data landed | `python check_live_ingestion.py` |
@@ -25,10 +25,13 @@ END_DATE   = ""             # "" = LIVE (to today);  "2021-11-01" = backtest win
 PRICE_TOP_N = 150           # how many top-mentioned tickers the price pull covers
 ```
 
-`END_DATE = ""` → live fast path (minutes). A date → frozen backtest window
-with a full 01–10 rebuild. This one place drives the pipeline, the Bloomberg
-pull, and the overlay charts; `--start/--end` override it for a single run
-and the override reaches the notebooks and the price pull too.
+`END_DATE = ""` → live fast path (minutes). A date → a frozen backtest VIEW —
+instant, because the aggregates are built once over `BUILD_START_DATE` →
+today (`--full`) and every window is just a lens over them. The window drives
+the Bloomberg pull and the overlay charts; `--start/--end` override it for a
+single run. A **WINDOW CHECK** in every run's output flags, per source,
+whether the chosen window actually has data — an empty chart is never a
+mystery.
 
 Every run prints a **data coverage table** (posts per month, per source) so
 gaps are visible immediately, validates and auto-repairs the notebooks, and

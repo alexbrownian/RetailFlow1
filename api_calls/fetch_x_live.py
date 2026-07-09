@@ -100,18 +100,19 @@ def load_env():
             "X_BEARER_TOKEN": get("X_BEARER_TOKEN")}
 
 
-def build_queries(chunk_size=6, week_filter=False):
+def build_queries(chunk_size=6, lookback_days=None):
     """Cashtag queries chunked to stay well under any query-length limit.
     Smaller chunks = more queries (more credits) but far better coverage per
     symbol, because each request returns up to PAGE_SIZE tweets for its whole
-    chunk. week_filter adds since:<7 days ago> - the trading signals run on a
-    1-WEEK lookback, so a week of posts is what the live pull must cover."""
+    chunk. lookback_days adds since:<N days ago> so the Top product ranks the
+    most popular posts of exactly that window."""
     core = {"GME", "AMC", "NVDA", "TSLA", "AAPL", "PLTR", "COIN", "MSTR", "SMCI"}
     symbols = sorted(set(THEME_ETFS.values()) | core)
     suffix = " lang:en -is:retweet"
-    if week_filter:
-        week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
-        suffix += f" since:{week_ago}"
+    if lookback_days:
+        since = (datetime.date.today()
+                 - datetime.timedelta(days=lookback_days)).isoformat()
+        suffix += f" since:{since}"
     queries, chunk = [], []
     for sym in symbols:
         chunk.append(f"${sym}")
@@ -193,7 +194,7 @@ def fetchlayer_test(key):
     return 0
 
 
-def fetchlayer_poll(key, max_tweets, max_credits=60):
+def fetchlayer_poll(key, max_tweets, max_credits=60, lookback_days=7):
     """TWO passes over the cashtag chunks (this is where the volume comes
     from - the signals need a WEEK of X chatter, not a trickle):
       1. product=Top     of the last 7 days - the most POPULAR tweets, the
@@ -202,11 +203,12 @@ def fetchlayer_poll(key, max_tweets, max_credits=60):
     Dedup on tweet id (here and at merge time) makes overlap harmless."""
     rows, used = [], 0
     per_chunk = min(PAGE_SIZE, max(10, max_tweets))
-    week_ago = (datetime.date.today() - datetime.timedelta(days=7)).isoformat()
-    discovery = [q + f" since:{week_ago}" for q in DISCOVERY_QUERIES]
+    since = (datetime.date.today()
+             - datetime.timedelta(days=lookback_days)).isoformat()
+    discovery = [q + f" since:{since}" for q in DISCOVERY_QUERIES]
     # DISCOVERY first (catch unknown names), then the targeted cashtag chunks.
-    passes = [("Top", discovery + build_queries(week_filter=True)),
-              ("Latest", build_queries(week_filter=False))]
+    passes = [("Top", discovery + build_queries(lookback_days=lookback_days)),
+              ("Latest", build_queries())]
     stopped = False
     for product, queries in passes:
         if stopped:
@@ -330,6 +332,8 @@ def main():
                    help="budget cap per run (Top-of-week + Latest passes)")
     p.add_argument("--max-credits", type=int, default=60,
                    help="FetchLayer credit cap per run (1 credit per request)")
+    p.add_argument("--lookback-days", type=int, default=7,
+                   help="Top-product window: how far back the fetch reaches")
     args = p.parse_args()
 
     env = load_env()
@@ -354,7 +358,8 @@ def main():
         print("TEST PASSED" if rows else "TEST FAILED - see messages above")
         return 0 if rows else 1
 
-    rows = (fetchlayer_poll(env["FETCHLAYER_API_KEY"], args.max_tweets, args.max_credits)
+    rows = (fetchlayer_poll(env["FETCHLAYER_API_KEY"], args.max_tweets,
+                            args.max_credits, args.lookback_days)
             if backend == "fetchlayer"
             else official_poll(env["X_BEARER_TOKEN"], args.max_tweets))
     if not rows:

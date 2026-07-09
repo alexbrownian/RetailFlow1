@@ -63,10 +63,14 @@ STATUS_ID = re.compile(r"/status/(\d+)")
 
 def _dates_from(series) -> pd.Series:
     """Timestamps -> 'YYYY-MM-DD'. Handles ISO strings AND unix seconds
-    (some dumps store post_date as seconds-since-1970)."""
-    parsed = pd.to_datetime(series, errors="coerce", utc=True)
-    numeric = pd.to_numeric(series, errors="coerce")
-    unix = pd.to_datetime(numeric, unit="s", utc=True, errors="coerce")
+    (some dumps store post_date as seconds-since-1970). Mixed formats are
+    expected here, so pandas' per-element-parse warning is suppressed."""
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        parsed = pd.to_datetime(series, errors="coerce", utc=True)
+        numeric = pd.to_numeric(series, errors="coerce")
+        unix = pd.to_datetime(numeric, unit="s", utc=True, errors="coerce")
     parsed = parsed.fillna(unix)
     return parsed.dt.strftime("%Y-%m-%d")
 
