@@ -1,22 +1,23 @@
 """
-gic_data.py
-===========
-GIC_RAW_DATA is the ONE thing we are allowed to commit to GitHub and pull onto
-the work laptop. It holds NO post text, NO authors, NO post ids, NO subreddit
-names - only daily COUNTS and SENTIMENT SCORES per ticker / theme. Five small
-parquet files (~2 MB total) from which notebooks 03/05/08/09/10 and the
-dashboard run with zero access to the underlying Reddit / X / StockTwits posts.
+abstracted_data.py
+==================
+ABSTRACTED_DATA/ is the one data folder committed to the repository and
+shared with the INTERNAL machine. It holds no post text, no authors, no post
+ids and no subreddit names - only daily COUNTS and SENTIMENT SCORES per
+ticker / theme. Five small parquet files (~2 MB total) from which the signal
+notebooks (08/09/10) and the price overlays run with zero access to the
+underlying Reddit / X / StockTwits posts.
 
 WHY THIS IS SAFE TO COMMIT
 --------------------------
-The 1 GB posts.parquet and posts_slice.parquet reveal everything (title,
-selftext, author, id, subreddit). The five aggregate files below are what the
-pipeline already produces AFTER the text has been turned into numbers - they
-carry only (date, ticker/theme, counts, sentiment scores). You cannot rebuild a
-single post from them. The source column keeps the readable labels
-'reddit'/'x'/'stocktwits' (your choice) but there is no text attached to them.
+The raw stores (posts.parquet, posts_slice.parquet) reveal everything: title,
+selftext, author, id, subreddit. The five aggregate files below are what the
+pipeline produces AFTER text has been turned into numbers - they carry only
+(date, ticker/theme, counts, sentiment scores). No individual post can be
+reconstructed from them. The source column keeps the readable labels
+'reddit'/'x'/'stocktwits', with no text attached.
 
-THE FIVE FILES (exact schema the notebooks already write / read)
+THE FIVE FILES (exact schema the notebooks write / read)
     daily_ticker_counts.parquet            date, ticker, mention_count
     daily_ticker_counts_by_source.parquet  date, ticker, source, mention_count
     daily_ticker_sentiment.parquet         date, ticker, n_posts, avg_sentiment, net_bullish
@@ -24,27 +25,26 @@ THE FIVE FILES (exact schema the notebooks already write / read)
     daily_theme_sentiment.parquet          date, theme,  n_posts, avg_sentiment, net_bullish
 
 TWO JOBS THIS MODULE DOES
-    1. export()  copy the five files data/processed -> GIC_RAW_DATA  (producer
-       machine, after notebooks 01-07 have run on the raw data)
-       hydrate()  copy the five files GIC_RAW_DATA -> data/processed  (work
-       laptop, so the UNCHANGED consumer notebooks + dashboard find them where
-       they already look). No notebook edits needed - we only copy across.
+    1. export()   copy the five files data/processed -> ABSTRACTED_DATA
+       (EXTERNAL machine, after the aggregates are built from raw data).
+       hydrate()  copy the five files ABSTRACTED_DATA -> data/processed
+       (INTERNAL machine, so the unchanged notebooks find them where they
+       already look). No notebook edits needed - only a copy.
 
-    2. aggregate_posts() + merge_into_gic()  fold a batch of NEW live posts into
-       the committed aggregates WITHOUT keeping the posts. Counts simply ADD;
-       sentiment means RECOMBINE weighted by n_posts. Both are proven to give
-       the identical result you would get by aggregating everything in one shot
-       (see tests/test_gic_merge.py).
+    2. aggregate_posts() + merge_into_abstracted()  fold a batch of NEW live
+       posts into the committed aggregates WITHOUT keeping the posts. Counts
+       simply ADD; sentiment means RECOMBINE weighted by n_posts. Both give
+       the identical result one-shot aggregation would.
 
-WHY THE SENTIMENT MERGE IS WEIGHTED (the one bit of maths worth reading)
-    avg_sentiment is a mean over posts, and net_bullish = (bulls - bears)/n is
-    also a per-post mean. To combine an OLD day-row (n_old posts) with a NEW
-    day-row (n_new posts) you cannot average the two averages - a row built
-    from 100 posts must count more than a row built from 3. So we rebuild the
-    underlying sums:
+WHY THE SENTIMENT MERGE IS WEIGHTED
+    avg_sentiment is a mean over posts, and net_bullish = (bulls - bears)/n
+    is also a per-post mean. Combining an OLD day-row (n_old posts) with a
+    NEW day-row (n_new posts) cannot average the two averages - a row built
+    from 100 posts must count more than a row built from 3. The merge
+    rebuilds the underlying sums:
         combined_avg = (avg_old*n_old + avg_new*n_new) / (n_old + n_new)
-    and the same for net_bullish. That is EXACTLY what one-shot aggregation
-    would compute, so history never gets revised - it only accumulates.
+    and the same for net_bullish - exactly what one-shot aggregation would
+    compute, so history never gets revised, only extended.
 """
 
 from __future__ import annotations
@@ -58,10 +58,10 @@ import pandas as pd
 # WHERE THINGS LIVE
 # ---------------------------------------------------------------------------
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GIC_DIR = os.path.join(ROOT, "GIC_RAW_DATA")               # committed to git
-PROCESSED_DIR = os.path.join(ROOT, "data", "processed")    # private, gitignored
+ABSTRACTED_DIR = os.path.join(ROOT, "ABSTRACTED_DATA")      # committed to git
+PROCESSED_DIR = os.path.join(ROOT, "data", "processed")     # private, gitignored
 
-# The five canonical filenames (used everywhere so there is one source of truth).
+# The five canonical filenames (used everywhere - one source of truth).
 TICKER_COUNTS = "daily_ticker_counts.parquet"
 TICKER_COUNTS_BY_SOURCE = "daily_ticker_counts_by_source.parquet"
 TICKER_SENT = "daily_ticker_sentiment.parquet"
@@ -84,7 +84,7 @@ MERGE_RULES = {
 
 
 # ---------------------------------------------------------------------------
-# COPY HELPERS - export (producer) and hydrate (consumer)
+# COPY HELPERS - export (external machine) and hydrate (internal machine)
 # ---------------------------------------------------------------------------
 def _copy_files(src_dir, dst_dir, verbose):
     """Copy whichever of the five files exist from src_dir to dst_dir."""
@@ -103,20 +103,19 @@ def _copy_files(src_dir, dst_dir, verbose):
     return copied
 
 
-def export(src_dir=PROCESSED_DIR, dst_dir=GIC_DIR, verbose=True):
-    """Producer side: publish the five aggregates to GIC_RAW_DATA for commit."""
+def export(src_dir=PROCESSED_DIR, dst_dir=ABSTRACTED_DIR, verbose=True):
+    """External machine: publish the five aggregates to ABSTRACTED_DATA."""
     if verbose:
         print(f"export: {src_dir} -> {dst_dir}")
     copied = _copy_files(src_dir, dst_dir, verbose)
     if verbose:
-        print(f"export done: {len(copied)}/{len(FILES)} files in GIC_RAW_DATA")
+        print(f"export done: {len(copied)}/{len(FILES)} files in ABSTRACTED_DATA")
     return copied
 
 
-def hydrate(src_dir=GIC_DIR, dst_dir=PROCESSED_DIR, verbose=True):
-    """Consumer side (work laptop): copy the committed aggregates into
-    data/processed so the UNCHANGED notebooks 08/09/10 and the dashboard find
-    them exactly where they already look."""
+def hydrate(src_dir=ABSTRACTED_DIR, dst_dir=PROCESSED_DIR, verbose=True):
+    """Internal machine: copy the committed aggregates into data/processed so
+    the unchanged notebooks and scripts find them where they already look."""
     if verbose:
         print(f"hydrate: {src_dir} -> {dst_dir}")
     copied = _copy_files(src_dir, dst_dir, verbose)
@@ -126,11 +125,11 @@ def hydrate(src_dir=GIC_DIR, dst_dir=PROCESSED_DIR, verbose=True):
 
 
 # ---------------------------------------------------------------------------
-# MERGE MATHS - the heart of "append without revising history"
+# MERGE MATHS - append without revising history
 # ---------------------------------------------------------------------------
 def _normalise_date(df):
-    """Make the date column a real datetime so grouping never treats the string
-    '2021-01-01' and the Timestamp 2021-01-01 as two different days."""
+    """Make the date column a real datetime so grouping never treats the
+    string '2021-01-01' and the Timestamp 2021-01-01 as two different days."""
     out = df.copy()
     out["date"] = pd.to_datetime(out["date"])
     return out
@@ -138,14 +137,14 @@ def _normalise_date(df):
 
 def merge_counts(old, new, keys):
     """Additive merge: same (date, ticker[, source]) rows have their
-    mention_count summed. Brand-new rows are just carried through."""
+    mention_count summed. Brand-new rows are carried through."""
     both = pd.concat([_normalise_date(old), _normalise_date(new)], ignore_index=True)
     merged = both.groupby(keys, as_index=False)["mention_count"].sum()
     return merged.sort_values(keys).reset_index(drop=True)
 
 
 def merge_sentiment(old, new, keys):
-    """n_posts-weighted merge (see the module docstring for why). Rebuilds the
+    """n_posts-weighted merge (see the module docstring). Rebuilds the
     per-day sums, adds them, then divides back out."""
     def prep(df):
         df = _normalise_date(df)
@@ -171,19 +170,19 @@ def merge_sentiment(old, new, keys):
 
 
 def _safe_write(df, path):
-    """Write a parquet the Windows-safe way: write a .tmp file, then swap it in.
-    If the target is locked (open in Jupyter/Excel/the dashboard) we print the
-    manual rename commands instead of leaving things half-written."""
+    """Write a parquet atomically: write a .tmp file, then swap it in with
+    os.replace (which overwrites the target in one step, on Windows too, so
+    there is never a moment with no file). If the target is locked (open in
+    Jupyter/Excel) the manual rename commands are printed instead of leaving
+    things half-written."""
     tmp = path + ".tmp"
     df.to_parquet(tmp, index=False)
     try:
-        # os.replace overwrites the target atomically (on Windows too) -
-        # no separate delete needed, so there is no moment with no file.
         os.replace(tmp, path)
     except PermissionError:
         print("!" * 68)
         print(f"Could not replace {os.path.basename(path)} - it is open in")
-        print("another program (a Jupyter kernel, Excel, or the dashboard).")
+        print("another program (a Jupyter kernel or Excel).")
         print("Close it, then rename by hand:")
         print(f'  del "{path}"')
         print(f'  ren "{tmp}" "{os.path.basename(path)}"')
@@ -191,17 +190,17 @@ def _safe_write(df, path):
         raise
 
 
-def merge_into_gic(new_aggs, gic_dir=GIC_DIR, verbose=True):
-    """Fold a dict of {filename: new_aggregate_df} into GIC_RAW_DATA.
-    Each file is read, merged by its rule, and written back. Files that already
-    exist accumulate; files that don't are created."""
-    os.makedirs(gic_dir, exist_ok=True)
+def merge_into_abstracted(new_aggs, target_dir=ABSTRACTED_DIR, verbose=True):
+    """Fold a dict of {filename: new_aggregate_df} into ABSTRACTED_DATA.
+    Each file is read, merged by its rule, and written back. Files that
+    already exist accumulate; files that don't are created."""
+    os.makedirs(target_dir, exist_ok=True)
     summary = {}
     for name, (kind, keys) in MERGE_RULES.items():
         new = new_aggs.get(name)
         if new is None or len(new) == 0:
             continue
-        path = os.path.join(gic_dir, name)
+        path = os.path.join(target_dir, name)
         if os.path.exists(path):
             old = pd.read_parquet(path)
             if kind == "counts":
@@ -220,11 +219,11 @@ def merge_into_gic(new_aggs, gic_dir=GIC_DIR, verbose=True):
 # ---------------------------------------------------------------------------
 # AGGREGATION - turn a batch of posts into the five aggregate frames.
 # Reuses the SAME functions the notebooks use, so live and historical numbers
-# are produced by identical code (no second implementation to drift).
+# are produced by identical code.
 # ---------------------------------------------------------------------------
 def _build_daily_theme_counts(posts_df):
-    """date, theme, mention_count - each post counts once per theme it mentions
-    (breadth of attention), same rule as build_daily_counts uses for tickers."""
+    """date, theme, mention_count - each post counts once per theme it
+    mentions (breadth of attention), the same rule the ticker side uses."""
     from src.themes import themes_in_text
 
     rows = []
@@ -244,8 +243,8 @@ def _build_daily_theme_counts(posts_df):
 
 def load_universe():
     """The valid US ticker set (cached Nasdaq files + delisted supplement).
-    max_cache_age_days is huge so this never tries to hit the network on the
-    work laptop - the cache under data/reference is enough."""
+    max_cache_age_days is huge so this never hits the network on the
+    internal machine - the cache under data/reference is enough."""
     from pathlib import Path
     from src.ticker_universe import load_us_ticker_universe
     return load_us_ticker_universe(Path(ROOT) / "data" / "reference",
@@ -254,7 +253,7 @@ def load_universe():
 
 def aggregate_posts(posts_df, universe=None, cashtags_only=False):
     """posts_df: standard 9-column posts (needs date, title, selftext, source).
-    Returns {filename: aggregate_df} for the five GIC files.
+    Returns {filename: aggregate_df} for the five files.
 
     Uses build_mentions + sentiment exactly like notebooks 02/06/07 do."""
     from src.build_mentions import build_daily_counts

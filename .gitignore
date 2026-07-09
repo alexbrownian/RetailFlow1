@@ -10,31 +10,32 @@ data/*
 !data/processed/README.md
 !data/raw/PUT_DATA_HERE.txt
 
-# EXCEPTION: the reference cache the WORK LAPTOP needs for the live append
-# (aggregate_posts looks up the ticker universe + word-ticker screening here).
-# These are public Nasdaq symbol lists + a DERIVED case-ratio table - they hold
-# NO post text, authors or ids, so they are safe to commit. The re-include-dir-
-# then-re-exclude-contents pattern keeps the seen-ids ledger (a .json) private.
+# EXCEPTION: the reference cache the INTERNAL machine needs for the live
+# append (aggregate_posts looks up the ticker universe + word-ticker
+# screening here). These are public Nasdaq symbol lists + a derived
+# case-ratio table - they hold NO post text, authors or ids, so they are
+# safe to commit. The re-include-dir-then-re-exclude-contents pattern keeps
+# the seen-ids ledger (a .json) private.
 !data/reference/
 data/reference/*
 !data/reference/nasdaqlisted.txt
 !data/reference/otherlisted.txt
 !data/reference/ticker_classification.csv
 
-# ---- GIC_RAW_DATA: the ONE data folder we DO commit ----
+# ---- ABSTRACTED_DATA: the ONE data folder that IS committed ----
 # It holds only the five abstracted aggregates (daily counts + sentiment
 # scores per ticker/theme) - NO post text, authors, ids or subreddits. See
-# GIC_RAW_DATA/README.md. Belt-and-suspenders: never let raw text or the
+# ABSTRACTED_DATA/README.md. Belt-and-suspenders: never let raw text or the
 # local dedup ledger slip in even if a file lands here by mistake.
-GIC_RAW_DATA/*.jsonl
-GIC_RAW_DATA/*.zst
-GIC_RAW_DATA/*.json
-GIC_RAW_DATA/posts*.parquet
-GIC_RAW_DATA/*slice*.parquet
-# (the live seen-ids ledger lives at data/reference/gic_live_meta.json, which
-#  is already ignored by the data/ rule above - post ids stay private.)
+ABSTRACTED_DATA/*.jsonl
+ABSTRACTED_DATA/*.zst
+ABSTRACTED_DATA/*.json
+ABSTRACTED_DATA/posts*.parquet
+ABSTRACTED_DATA/*slice*.parquet
+# (the live seen-ids ledger lives at data/reference/abstracted_live_meta.json,
+#  which is already ignored by the data/ rule above - post ids stay private.)
 
-# secrets - NEVER commit credentials
+# secrets - never commit session captures
 curl.txt
 
 # junk / regenerable
@@ -45,3 +46,4 @@ __pycache__/
 .ipynb_checkpoints/
 *.bak
 *.bak.parquet
+notebooks/*.tmp.ipynb

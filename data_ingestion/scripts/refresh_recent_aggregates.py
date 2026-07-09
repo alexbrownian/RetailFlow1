@@ -1,6 +1,6 @@
 # refresh_recent_aggregates.py
 # ============================
-# The PRODUCER's live fast path: rebuild the LAST N DAYS of the five
+# The EXTERNAL machine's live fast path: rebuild the LAST N DAYS of the five
 # aggregate files straight from posts.parquet, and splice that fresh tail
 # onto the untouched history.
 #
@@ -8,21 +8,20 @@
 #   python data_ingestion/scripts/refresh_recent_aggregates.py --days 60
 #   python data_ingestion/scripts/refresh_recent_aggregates.py --dry-run
 #
-# WHY THIS EXISTS (and why it is not append_live_to_gic.py)
+# WHY THIS EXISTS (and why it is not append_live_abstracted.py)
 #   The full notebook chain (01-07) rebuilds every aggregate from scratch -
-#   correct but SLOW (the sentiment scoring alone can take 20-40 min).
-#   append_live_to_gic.py folds new posts in incrementally with a seen-ids
-#   ledger - right for the work laptop (no raw store), but the ledger can
-#   drift out of sync with full rebuilds on the producer.
-#   THIS script has neither problem: posts.parquet is the one source of
+#   correct but slow (sentiment scoring alone can take 20-40 minutes).
+#   append_live_abstracted.py folds new posts in incrementally with a
+#   seen-ids ledger - right for the internal machine (no raw store), but a
+#   ledger can drift out of sync with full rebuilds where a raw store exists.
+#   This script has neither problem: posts.parquet is the single source of
 #   truth, so recomputing its most recent days and replacing exactly those
-#   days in the aggregates is always correct, however often you run it.
-#   Same aggregation code as everything else (src.gic_data.aggregate_posts),
-#   so live numbers and full-rebuild numbers can never disagree.
+#   days in the aggregates is always correct, however often it runs. It uses
+#   the same aggregation code as everything else, so live numbers and
+#   full-rebuild numbers can never disagree.
 #
-# THE RULE: everything ON or AFTER the cutoff date is recomputed;
-#           everything BEFORE it is left exactly as the last full rebuild
-#           (or previous splice) wrote it.
+# THE RULE: everything ON or AFTER the cutoff date is recomputed; everything
+#           BEFORE it is left exactly as the last full rebuild wrote it.
 
 import argparse
 import datetime
@@ -36,12 +35,12 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(THIS_DIR))
 sys.path.insert(0, PROJECT_ROOT)
 
-try:                     # posts contain emoji/links; don't die on cp1252
+try:                     # posts contain emoji/links; avoid cp1252 crashes
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
     pass
 
-from src import gic_data                                    # noqa: E402
+from src import abstracted_data                             # noqa: E402
 
 POSTS_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "posts.parquet")
 PROCESSED = os.path.join(PROJECT_ROOT, "data", "processed")
@@ -52,9 +51,9 @@ DEFAULT_DAYS = 45
 
 
 def load_recent_posts(cutoff):
-    """Only the columns the aggregator needs, only rows >= cutoff.
-    pyarrow pushes the filter into the file scan, so this reads a tiny
-    fraction of the 1 GB store."""
+    """Only the columns the aggregator needs, only rows >= cutoff. pyarrow
+    pushes the filter into the file scan, so this reads a tiny fraction of
+    the store."""
     table = pq.read_table(
         POSTS_PATH,
         columns=["id", "date", "title", "selftext", "source"],
@@ -86,8 +85,8 @@ def main():
     args = p.parse_args()
 
     if not os.path.exists(POSTS_PATH):
-        print("no posts.parquet - this script is for the PRODUCER machine only.")
-        print("(the work laptop uses api_calls/append_live_to_gic.py instead)")
+        print("no posts.parquet - this script is for the EXTERNAL machine only.")
+        print("(the internal machine uses api_calls/append_live_abstracted.py)")
         return 1
 
     cutoff = (datetime.date.today()
@@ -103,9 +102,9 @@ def main():
     print(f"by source: {by_src} | dates {posts['date'].min()} -> {posts['date'].max()}")
 
     print("aggregating (tickers + themes + sentiment - same code as the notebooks)...")
-    new_aggs = gic_data.aggregate_posts(posts)
+    new_aggs = abstracted_data.aggregate_posts(posts)
 
-    for name, (kind, keys) in gic_data.MERGE_RULES.items():
+    for name, (kind, keys) in abstracted_data.MERGE_RULES.items():
         path = os.path.join(PROCESSED, name)
         new_tail = new_aggs.get(name)
         if new_tail is None:
@@ -120,14 +119,14 @@ def main():
             print(f"  would write {name:<40} {len(old):,} -> {len(merged):,} rows "
                   f"({changed:+,})")
             continue
-        gic_data._safe_write(merged, path)
+        abstracted_data._safe_write(merged, path)
         print(f"  spliced {name:<40} {len(old):,} -> {len(merged):,} rows ({changed:+,})")
 
     if args.dry_run:
         print("dry-run: nothing written.")
         return 0
 
-    print("done. next: notebooks 08/09/10 (update_data.py runs them for you).")
+    print("done. next: notebooks 08/09/10 (update_data.py runs them).")
     return 0
 
 

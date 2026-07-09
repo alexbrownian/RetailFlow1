@@ -2,32 +2,33 @@
 """
 pull_bloomberg_prices.py - daily close prices from the Bloomberg Terminal API.
 
-Run this on the WORK LAPTOP (the one with the Terminal + blpapi installed),
-AFTER update_data.py, so the tickers it pulls match what your notebooks show:
+Runs on the INTERNAL machine (the one with the Terminal + blpapi installed),
+after update_data.py, so the tickers pulled match what the notebooks show:
 
     python pull_bloomberg_prices.py            # connect + pull + save
-    python pull_bloomberg_prices.py --dry-run  # show what it WOULD pull, no connect
+    python pull_bloomberg_prices.py --dry-run  # show what WOULD be pulled, no connect
 
 WHAT IT PULLS
     Field   : PX_LAST (daily close)
-    Window  : START_DATE -> END_DATE from update_data.py ('' end = up to today)
+    Window  : START_DATE -> END_DATE from update_data.py ('' end = up to today);
+              the PIPELINE_* env vars set by update_data.py override for one run
     Symbols : the union of
                 * the PRICE_TOP_N most-mentioned tickers over the window
-                  (from data/processed/daily_ticker_counts.parquet)
-                * every theme's ETF (src/themes.py THEME_ETFS)
-                * anything that appears in the signals
-                  (trade_signals.etf + trade_signals_tickers.ticker)
+                * the PRICE_TOP_N most-mentioned tickers of the last 60 days
+                  (the overlays pick their tickers at render time, so a name
+                  that got loud recently must be priced too)
+                * every theme's anchor ETF and its fallbacks (src/themes.py)
+                * anything that appears in the trade signals
               Each is sent to Bloomberg as "<SYMBOL> US Equity".
 
 OUTPUT
     data/prices/prices.parquet  (long, tidy):  date, symbol, px_last
     'symbol' is the plain ticker/ETF (e.g. AAPL, XBI) so the overlay notebooks
-    join straight onto your mentions / conviction / signals tables.
+    join straight onto the mentions / conviction / signals tables. The file
+    stays local (gitignored - Bloomberg redistribution terms).
 
-WHY blpapi (official) AND NOT xbbg/pdblp
-    You said the official SDK is what you have. This uses only blpapi's
-    HistoricalDataRequest - no extra wrappers to install. The Terminal must be
-    running and logged in; blpapi talks to it on localhost:8194 by default.
+Uses only blpapi's HistoricalDataRequest - no wrapper packages. The Terminal
+must be running and logged in; blpapi connects on localhost:8194.
 """
 
 import argparse
@@ -81,9 +82,8 @@ def build_symbol_universe():
     symbols = set()
 
     # top-N most-mentioned tickers over the window, PLUS the top-N of the
-    # last 60 days. The overlays auto-pick their tickers at render time, and
-    # a name that got loud only recently can out-rank the whole-window top -
-    # pulling both sets is what stops the "no price rows for X" skips.
+    # last 60 days - the overlays auto-pick their tickers at render time,
+    # and a recently-loud name can out-rank the whole-window top.
     counts = _read("daily_ticker_counts.parquet")
     if counts is not None and len(counts):
         c = counts.copy()
@@ -99,7 +99,7 @@ def build_symbol_universe():
                       .sort_values(ascending=False).head(PRICE_TOP_N).index.tolist())
         symbols.update(top_recent)
 
-    # every theme's ETF, plus every fallback anchor (so a backtest window
+    # every theme's anchor ETF, plus every fallback anchor (a backtest window
     # older than a young ETF can still draw the theme against its fallback)
     symbols.update(THEME_ETFS.values())
     for fallbacks in THEME_ETF_FALLBACKS.values():
@@ -124,7 +124,7 @@ def to_bloomberg(symbol):
 
 
 # ---------------------------------------------------------------------------
-# 2. Pull the prices (this is the only part that needs the Terminal)
+# 2. Pull the prices (the only part that needs the Terminal)
 # ---------------------------------------------------------------------------
 def pull_prices(symbols, start_yyyymmdd, end_yyyymmdd):
     """Return a long DataFrame: date, symbol, px_last. Uses blpapi directly."""
@@ -172,7 +172,7 @@ def _parse_message(msg):
     if not msg.hasElement("securityData"):
         return out
     sec_data = msg.getElement("securityData")
-    # Bloomberg gives back 'IBM US Equity'; strip the suffix to the plain symbol.
+    # Bloomberg returns 'IBM US Equity'; strip the suffix to the plain symbol.
     security = sec_data.getElementAsString("security")
     symbol = security.replace(" US Equity", "").strip()
 
@@ -231,7 +231,7 @@ def main():
           f"-> {OUT_PATH}")
 
     # COVERAGE REPORT - name every requested symbol that came back empty, so
-    # "no price rows" in the overlays is never a mystery again.
+    # "no price rows" in the overlays is never a mystery.
     got = set(prices["symbol"].unique())
     missing = [s for s in symbols if s not in got]
     if missing:
@@ -240,7 +240,8 @@ def main():
         print("  " + ", ".join(missing))
     else:
         print("full coverage: every requested symbol returned prices.")
-    print("next: open the overlay notebooks (11-14) to compare against your data.")
+
+    print("next: open the overlay notebooks (11-16) to compare against the data.")
     return 0
 
 

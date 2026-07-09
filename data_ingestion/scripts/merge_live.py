@@ -1,36 +1,36 @@
 # merge_live.py
 # =============
-# THE missing link: take the RAW live files the api_calls/ fetchers write and
-# APPEND the new posts into data/processed/posts.parquet, so live Reddit, X
-# and StockTwits actually reach the signals - not just the raw folder.
+# Append the RAW live files written by the api_calls/ fetchers into
+# data/processed/posts.parquet, so live Reddit, X and StockTwits posts reach
+# the signals - not just the raw folder. EXTERNAL machine only (the internal
+# machine has no raw store; it uses api_calls/append_live_abstracted.py).
 #
-# Sources it merges (each self-skips if its raw folder is empty):
+# Sources merged (each self-skips if its raw folder is empty):
 #   data/raw/RedditLive/*.jsonl.zst    -> src.reddit_live_data
 #   data/raw/StockTwits/*.jsonl.zst    -> src.stocktwits_data
 #   data/raw/X Data/x_api_live.csv.zst -> src.x_data (normalise_x_api)
 #
-# THE DEDUP CONTRACT ("first seen wins", per LIVE_INGESTION.md): a candidate
-# post is dropped if its id is ALREADY in posts.parquet. So this script is
-# APPEND-ONLY and fully IDEMPOTENT - run it as often as you like, it only
-# ever adds posts it has never seen. It NEVER rewrites or revises history.
-#   (Distinct id prefixes keep the sources apart: reddit base36, 'x_' tweets,
+# THE DEDUP CONTRACT ("first seen wins"): a candidate post is dropped if its
+# id is already in posts.parquet. The script is append-only and idempotent -
+# it only ever adds posts it has never seen and never revises history.
+#   (Distinct id prefixes keep the sources apart: Reddit base36, 'x_' tweets,
 #    'st_' StockTwits - collisions are impossible across sources.)
 #
-# vs add_x_data.py: that one REBUILDS the X block from the frozen HuggingFace
-# dumps and is the right tool for the historical backfill. THIS one only
-# appends fresh live posts. They don't fight: merge_live never drops rows.
+# vs add_x_data.py: that script REBUILDS the X block from the frozen
+# HuggingFace dumps (historical backfill). This one only appends fresh live
+# posts. They do not conflict: merge_live never drops rows.
 #
-# HOW (streaming - never loads the 1.15 GB parquet into memory):
+# HOW (memory-safe - the full store is never loaded at once):
 #   1. normalise every raw live file -> candidate rows (standard 9 columns)
-#   2. stream posts.parquet row group by row group: copy each group straight
-#      through AND collect its ids into a set
-#   3. keep only candidates whose id is not in that set; append them as a
-#      final date-sorted block
-#   4. verify row counts + schema, then swap the new file in
+#   2. read ONLY the id column to find which candidates are new; if none,
+#      exit immediately (no rewrite - the common no-op case costs seconds)
+#   3. otherwise stream posts.parquet row group by row group into a new
+#      file and append the new candidates as a final date-sorted block
+#   4. verify row counts + schema, then swap the new file in atomically
 #
 # Run from anywhere:  python data_ingestion/scripts/merge_live.py
 #   --dry-run   normalise + count what WOULD be added, write nothing
-#   --posts / --raw-root / --out   override default project paths
+#   --posts / --raw-root / --out   override default paths
 
 import argparse
 import glob
@@ -136,11 +136,11 @@ def conform(t):
     return t.select(COLS).cast(SCHEMA)
 
 
-# ---------------- a human-readable snapshot of what we pulled --------------
+# ---------------- a human-readable snapshot of what was pulled -------------
 def print_snapshot(df):
-    """Eyeball check: how many posts per source, the reddit subreddit mix,
-    and the newest few posts from each source - so you can see a run really
-    pulled live data (and what)."""
+    """Sanity view: posts per source, the reddit subreddit mix, and the
+    newest few posts from each source - confirms a run really pulled
+    live data (and what)."""
     print("\n" + "=" * 64)
     print("LIVE INGESTION SNAPSHOT  (what the fetchers pulled into raw)")
     print("=" * 64)
@@ -193,52 +193,43 @@ def main():
           f"| dates {cand['date'].min()} -> {cand['date'].max()}")
     print_snapshot(cand)
 
-    # ---- 2. stream posts.parquet: copy groups through, collect existing ids
-    pf = pq.ParquetFile(args.posts)
-    out_path = args.out or os.path.join(os.path.dirname(args.posts), "posts_live_merged.parquet")
+    # ---- 2. FAST PRE-CHECK: read only the id column to find what is new.
+    #         When everything was already merged (the common case for a
+    #         re-run) this exits without touching the store at all.
+    seen = set(pq.read_table(args.posts, columns=["id"]).column("id").to_pylist())
+    fresh = cand[~cand["id"].isin(seen)].reset_index(drop=True)
+    if fresh.empty:
+        print(f"all {len(cand):,} candidate posts are already in posts.parquet "
+              "- nothing new to append (store untouched).")
+        return 0
+    by_src = fresh.groupby("source").size().to_dict()
+    print(f"[new   ] {len(fresh):,} of {len(cand):,} candidates are NEW: {by_src}")
 
     if args.dry_run:
-        seen = set()
-        for i in range(pf.metadata.num_row_groups):
-            seen.update(pf.read_row_group(i, columns=["id"]).column("id").to_pylist())
-        fresh = cand[~cand["id"].isin(seen)]
-        print(f"[dry   ] {len(fresh):,} of {len(cand):,} candidates are NEW "
-              f"(would be appended); {len(cand) - len(fresh):,} already in posts.parquet")
-        by_src = fresh.groupby("source").size().to_dict()
-        print(f"[dry   ] new by source: {by_src or '(none)'}")
         print("dry-run: nothing written.")
         return 0
 
+    # ---- 3. stream the store through to a new file and append the fresh block
+    pf = pq.ParquetFile(args.posts)
+    out_path = args.out or os.path.join(os.path.dirname(args.posts),
+                                        "posts_live_merged.parquet")
     writer = pq.ParquetWriter(out_path, SCHEMA, compression="zstd")
-    seen = set()
     kept = 0
     for i in range(pf.metadata.num_row_groups):
-        t = pf.read_row_group(i)
-        seen.update(t.column("id").to_pylist())
-        t = conform(t)
+        t = conform(pf.read_row_group(i))
         writer.write_table(t)
         kept += t.num_rows
         print(f"  row group {i + 1}/{pf.metadata.num_row_groups} "
               f"({kept:,} existing rows copied)", flush=True)
-
-    # ---- 3. append only the genuinely new candidates
-    fresh = cand[~cand["id"].isin(seen)].reset_index(drop=True)
-    if fresh.empty:
-        writer.close()
-        os.remove(out_path)
-        print(f"all {len(cand):,} candidate posts are already in posts.parquet "
-              "- nothing new to append.")
-        return 0
     writer.write_table(pa.Table.from_pandas(fresh, schema=SCHEMA, preserve_index=False))
     writer.close()
-
     try:
         pf.close()
     except AttributeError:
         del pf
 
     # ---- 4. verify, then swap. Release the verify handle FIRST - Windows
-    #         refuses to rename a file any process (including us) has open.
+    #         refuses to rename a file any process has open.
     new = pq.ParquetFile(out_path)
     total_rows, schema_names = new.metadata.num_rows, new.schema_arrow.names
     try:
@@ -248,13 +239,11 @@ def main():
     assert schema_names == COLS, "schema mismatch"
     assert total_rows == kept + len(fresh), (
         f"row count mismatch: {total_rows} != {kept} + {len(fresh)}")
-    by_src = fresh.groupby("source").size().to_dict()
-    print(f"verified: {kept:,} existing + {len(fresh):,} new "
-          f"= {total_rows:,} rows | new by source: {by_src}")
+    print(f"verified: {kept:,} existing + {len(fresh):,} new = {total_rows:,} rows")
 
     try:
-        # os.replace overwrites the target atomically (on Windows too) -
-        # no separate delete, so there is never a moment with no posts file.
+        # os.replace overwrites the target atomically (on Windows too) - no
+        # separate delete, so there is never a moment with no posts file.
         os.replace(out_path, args.posts)
     except PermissionError:
         print()
@@ -268,7 +257,7 @@ def main():
         print("!" * 68)
         return 1
     print("swapped in:", args.posts)
-    print("next: re-run the notebook chain (update_data.py does this), then the dashboard.")
+    print("next: re-run the notebook chain (update_data.py does this).")
     return 0
 
 

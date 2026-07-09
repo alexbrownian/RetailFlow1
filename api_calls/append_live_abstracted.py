@@ -1,37 +1,37 @@
-# append_live_to_gic.py
-# ======================
-# Fold NEW live posts into GIC_RAW_DATA (the committable aggregates) WITHOUT
-# ever keeping the raw text. This is the live-ingestion path for the work
-# laptop, which is NOT allowed to hold posts.parquet.
+# append_live_abstracted.py
+# =========================
+# Fold NEW live posts into ABSTRACTED_DATA (the committable aggregates)
+# WITHOUT keeping any raw text. This is the live-ingestion path for the
+# INTERNAL machine, which does not hold posts.parquet.
 #
-#   python api_calls/append_live_to_gic.py             fold new live posts in
-#   python api_calls/append_live_to_gic.py --dry-run   show what WOULD fold in
+#   python api_calls/append_live_abstracted.py             fold new posts in
+#   python api_calls/append_live_abstracted.py --dry-run   show what WOULD fold in
 #
 # HOW IT DIFFERS FROM merge_live.py
-#   merge_live.py appends raw live posts into the 1 GB posts.parquet (the
-#   producer machine, which is allowed to hold raw text). THIS script skips the
-#   raw store entirely: it aggregates the new posts into daily counts + daily
-#   sentiment and merges those tiny rows into GIC_RAW_DATA. Same fetchers, same
-#   normalisers, same aggregation code - just a different, text-free destination.
+#   merge_live.py appends raw live posts into posts.parquet (the EXTERNAL
+#   machine's raw store). This script skips the raw store entirely: it
+#   aggregates the new posts into daily counts + daily sentiment and merges
+#   those rows into ABSTRACTED_DATA. Same fetchers, same normalisers, same
+#   aggregation code - a different, text-free destination.
 #
 # THE FLOW
 #   1. read live raw (RedditLive / StockTwits / X live) -> 9-column candidates
 #      using the project normalisers (identical to merge_live.py)
 #   2. keep only candidates that are
-#        (a) dated >= LIVE_START  - separates them from the committed HISTORICAL
-#            block (built from the frozen dumps), so the two never overlap
-#        (b) NOT already in the local seen-ids ledger - "first seen wins" across
-#            live re-runs, so running this twice folds nothing the second time
-#   3. aggregate the survivors (src.gic_data.aggregate_posts) and merge the
-#      deltas into GIC_RAW_DATA (counts add; sentiment recombines weighted)
-#   4. record the new ids in the ledger, then hydrate GIC_RAW_DATA ->
-#      data/processed so the UNCHANGED notebooks 08/09/10 + dashboard see it
+#        (a) dated >= LIVE_START - separates them from the committed HISTORICAL
+#            block, so the two never overlap
+#        (b) NOT already in the local seen-ids ledger ("first seen wins"
+#            across re-runs, so running twice folds nothing the second time)
+#   3. aggregate the survivors and merge the deltas into ABSTRACTED_DATA
+#      (counts add; sentiment recombines weighted by n_posts)
+#   4. record the new ids in the ledger, then hydrate ABSTRACTED_DATA ->
+#      data/processed so the unchanged notebooks 08/09/10 see the update
 #
-# THE LEDGER + LIVE_START (data/reference/gic_live_meta.json)
-#   Kept LOCAL and gitignored - post ids are mildly identifying, so they are the
-#   one thing we do NOT commit. On a fresh work laptop the ledger starts empty
-#   and LIVE_START is frozen to (newest date already in GIC_RAW_DATA) + 1 day,
-#   so live only ever adds genuinely new days on top of the committed history.
+# THE LEDGER + LIVE_START (data/reference/abstracted_live_meta.json)
+#   Kept local and gitignored - post ids are mildly identifying, so they are
+#   the one thing never committed. On a fresh machine the ledger starts empty
+#   and LIVE_START freezes to (newest committed date) + 1 day, so live only
+#   ever adds genuinely new days on top of the committed history.
 
 import argparse
 import glob
@@ -46,22 +46,25 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(THIS_DIR)
 sys.path.insert(0, PROJECT_ROOT)
 
-# Posts can contain emoji/links; keep the Windows console from crashing on them.
+# Posts can contain emoji/links; keep the Windows console from crashing.
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
     pass
 
 import zstandard                                              # noqa: E402
-from src import gic_data                                      # noqa: E402
+from src import abstracted_data                               # noqa: E402
 from src.clean_data import read_json_lines                    # noqa: E402
 from src.reddit_live_data import normalise_reddit_live_records  # noqa: E402
 from src.stocktwits_data import normalise_stocktwits          # noqa: E402
 from src.x_data import normalise_x_api                        # noqa: E402
 
 RAW_ROOT = os.path.join(PROJECT_ROOT, "data", "raw")
-META_PATH = os.path.join(PROJECT_ROOT, "data", "reference", "gic_live_meta.json")
-MAX_SEEN = 300_000            # cap the ledger; newest ids kept (plenty for dedup)
+META_PATH = os.path.join(PROJECT_ROOT, "data", "reference",
+                         "abstracted_live_meta.json")
+LEGACY_META = os.path.join(PROJECT_ROOT, "data", "reference",
+                           "gic_live_meta.json")   # pre-rename ledger location
+MAX_SEEN = 300_000            # ledger cap; newest ids kept (plenty for dedup)
 
 # The columns aggregate_posts needs from a post.
 NEEDED = ["id", "date", "title", "selftext", "source"]
@@ -110,7 +113,7 @@ def collect_candidates():
         return pd.DataFrame(columns=NEEDED)
     df = pd.concat(parts, ignore_index=True)
     df = df.drop_duplicates(subset="id", keep="first")
-    # keep only what the aggregator needs; make sure date is a plain 'YYYY-MM-DD'
+    # keep only what the aggregator needs; date as plain 'YYYY-MM-DD'
     df["date"] = df["date"].astype(str).str.slice(0, 10)
     for c in ("id", "title", "selftext", "source"):
         df[c] = df[c].fillna("").astype(str)
@@ -119,6 +122,14 @@ def collect_candidates():
 
 # ---------------- ledger + LIVE_START -------------------------------------
 def load_meta():
+    # migrate the pre-rename ledger transparently, so dedup history survives
+    if not os.path.exists(META_PATH) and os.path.exists(LEGACY_META):
+        try:
+            os.replace(LEGACY_META, META_PATH)
+            print("[setup ] migrated ledger gic_live_meta.json -> "
+                  "abstracted_live_meta.json")
+        except OSError:
+            pass
     if os.path.exists(META_PATH):
         try:
             return json.load(open(META_PATH, encoding="utf-8"))
@@ -139,9 +150,8 @@ def save_meta(meta):
 
 
 def newest_committed_date():
-    """Newest date already in GIC_RAW_DATA (from the committed history),
-    or None if GIC_RAW_DATA has no ticker counts yet."""
-    path = os.path.join(gic_data.GIC_DIR, gic_data.TICKER_COUNTS)
+    """Newest date already in ABSTRACTED_DATA, or None if empty."""
+    path = os.path.join(abstracted_data.ABSTRACTED_DIR, abstracted_data.TICKER_COUNTS)
     if not os.path.exists(path):
         return None
     d = pd.read_parquet(path, columns=["date"])
@@ -151,14 +161,14 @@ def newest_committed_date():
 
 
 def resolve_live_start(meta):
-    """Frozen once: the first day live ingestion owns. Posts before it belong to
-    the committed historical block and must never be re-folded here."""
+    """Frozen once: the first day live ingestion owns. Posts before it belong
+    to the committed historical block and must never be re-folded here."""
     live_start = meta.get("live_start")
     if live_start:
         return live_start
     newest = newest_committed_date()
     if newest is None:
-        live_start = "1970-01-01"        # empty GIC -> accept everything
+        live_start = "1970-01-01"        # empty store -> accept everything
     else:
         live_start = (newest + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     meta["live_start"] = live_start      # freeze so it never moves again
@@ -170,11 +180,11 @@ def resolve_live_start(meta):
 # ---------------- main -----------------------------------------------------
 def main():
     p = argparse.ArgumentParser(
-        description="Fold new live posts into GIC_RAW_DATA (text-free aggregates).")
+        description="Fold new live posts into ABSTRACTED_DATA (text-free aggregates).")
     p.add_argument("--dry-run", action="store_true",
                    help="report what WOULD be folded in; write nothing")
     p.add_argument("--no-hydrate", action="store_true",
-                   help="update GIC_RAW_DATA but skip the copy into data/processed")
+                   help="update ABSTRACTED_DATA but skip the copy into data/processed")
     args = p.parse_args()
 
     # ---- 1. gather + 2. filter
@@ -200,30 +210,30 @@ def main():
               f" | dates {fresh['date'].min()} -> {fresh['date'].max()}")
 
     if fresh.empty:
-        print("nothing new to fold - GIC_RAW_DATA already up to date.")
+        print("nothing new to fold - ABSTRACTED_DATA already up to date.")
         return 0
 
     if args.dry_run:
         print("\n--dry-run: nothing written. The above is what WOULD be folded in.")
         return 0
 
-    # ---- 3. aggregate the new posts and merge the deltas into GIC_RAW_DATA
+    # ---- 3. aggregate the new posts and merge the deltas
     print("\n--- aggregating new posts (tickers + sentiment) ---")
-    new_aggs = gic_data.aggregate_posts(fresh)
-    print("--- merging into GIC_RAW_DATA ---")
-    gic_data.merge_into_gic(new_aggs)
+    new_aggs = abstracted_data.aggregate_posts(fresh)
+    print("--- merging into ABSTRACTED_DATA ---")
+    abstracted_data.merge_into_abstracted(new_aggs)
 
-    # ---- 4. record the new ids, then hydrate for the local notebooks/dashboard
+    # ---- 4. record the new ids, then hydrate for the local notebooks
     meta["seen_ids"] = meta.get("seen_ids", []) + fresh["id"].tolist()
     save_meta(meta)
     print(f"[ledger] +{len(fresh):,} ids "
           f"(ledger now holds {len(meta['seen_ids']):,})")
 
     if not args.no_hydrate:
-        print("\n--- hydrate GIC_RAW_DATA -> data/processed ---")
-        gic_data.hydrate()
+        print("\n--- hydrate ABSTRACTED_DATA -> data/processed ---")
+        abstracted_data.hydrate()
 
-    print("\ndone. next: re-run notebooks 08/09/10 (or update_data.py) then the dashboard.")
+    print("\ndone. next: re-run notebooks 08/09/10 (update_data.py does this).")
     return 0
 
 

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(python -c \"import scipy; print\\(scipy.__version__\\)\")",
+      "Bash(python -m jupyter nbconvert --to notebook --execute --inplace notebooks/03_first_derivative.ipynb --ExecutePreprocessor.timeout=600)",
+      "Bash(python -c \"import wordfreq; print\\(wordfreq.__file__\\)\")",
+      "Bash(python -m pip show wordfreq)",
+      "Bash(python -m pip install wordfreq)",
+      "Bash(jupyter nbconvert *)"
+    ]
+  }
+}

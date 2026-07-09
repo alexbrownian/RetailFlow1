@@ -1,10 +1,9 @@
-# check_freshness.py
-# ==================
-# THE live-data smoke test: one command that tells you, layer by layer,
-# whether fresh data is actually flowing through the pipeline - and where
-# it stops if not. Run it any time (it changes nothing):
+# check_live_ingestion.py
+# =======================
+# Live-data smoke test: reports, layer by layer, whether fresh data is
+# flowing through the pipeline - and where it stops if not. Read-only.
 #
-#     python check_freshness.py
+#     python check_live_ingestion.py
 #
 # It checks the four layers in flow order:
 #   1. FETCH    - are the raw live files growing? (StockTwits daily file,
@@ -12,7 +11,7 @@
 #   2. DATASET  - what is the newest post date in posts.parquet, per source?
 #   3. DERIVED  - how fresh are the notebook outputs (counts, sentiment,
 #                 signals)?
-#   4. RECORD   - do we have today's signal snapshot and pipeline log?
+#   4. RECORD   - is today's signal snapshot and pipeline log present?
 #
 # Verdicts: [LIVE] = data within 2 days of today; [OK] = expected state;
 # [STALE]/[MISSING] = investigate (the message says what to run).
@@ -62,8 +61,7 @@ if os.path.exists(x_live):
     newest = str(df["created_at"].max())[:10] if len(df) else None
     print(f"X live     : {verdict(newest)} {len(df):,} tweets accumulated")
 else:
-    print("X live     : [OK - armed, off] no X_BEARER_TOKEN paid/set yet "
-          "(expected until you subscribe)")
+    print("X live     : [NO DATA YET] no X fetch has run on this machine")
 
 rl_files = sorted(glob.glob(os.path.join(ROOT, "data", "raw", "RedditLive", "*.jsonl.zst")))
 if rl_files:
@@ -73,7 +71,7 @@ if rl_files:
     print(f"Reddit live: {verdict(day)} latest file {os.path.basename(latest)} "
           f"({blob.count(chr(10).encode()):,} raw posts)")
 else:
-    print("Reddit live: [NO DATA YET] fetcher is built - verify with "
+    print("Reddit live: [NO DATA YET] verify the key with "
           "'python api_calls/test_fetchlayer.py', then run "
           "'python api_calls/fetch_all.py' to start accumulating")
 
@@ -81,7 +79,8 @@ else:
 section("2. DATASET - posts.parquet, newest post per source")
 posts = os.path.join(ROOT, "data", "processed", "posts.parquet")
 if not os.path.exists(posts):
-    print("[MISSING] posts.parquet - run the ingestion scripts")
+    print("[OK - internal machine] no posts.parquet here; live posts fold "
+          "into ABSTRACTED_DATA via api_calls/append_live_abstracted.py")
 else:
     try:
         cols = pq.ParquetFile(posts).schema_arrow.names
@@ -94,7 +93,7 @@ else:
         else:
             print(f"all        : {verdict(t['date'].max())} newest post {t['date'].max()}")
         print("(live Reddit, X and StockTwits raw all APPEND into posts.parquet via "
-              "merge_live.py - run it, or update_data.py / fetch_all.py, to pull them in.)")
+              "merge_live.py - run it, or update_data.py, to pull them in.)")
     except Exception as exc:
         print(f"[UNREADABLE] posts.parquet could not be opened ({exc}).")
         print("If a merge/swap is mid-flight or another program holds the file,")
@@ -106,7 +105,7 @@ for label, fname, date_col in [
         ("counts (02)   ", "daily_ticker_counts.parquet", "date"),
         ("tick sent (06)", "daily_ticker_sentiment.parquet", "date"),
         ("theme sent(07)", "daily_theme_sentiment.parquet", "date"),
-        ("signals (09)  ", "trade_signals.parquet", "signal_date")]:
+        ("signals (10)  ", "trade_signals.parquet", "signal_date")]:
     path = os.path.join(ROOT, "data", "processed", fname)
     if not os.path.exists(path):
         print(f"{label}: [MISSING] - run the notebook / update_data.py")
@@ -134,4 +133,4 @@ else:
     print("last log   : none - update_data.py has never run")
 
 print("\nRule of thumb: layer N stale but layer N-1 fresh => the step between "
-      "them didn't run. All [LIVE] => the dashboard chip will show LIVE too.")
+      "them did not run.")
