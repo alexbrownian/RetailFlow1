@@ -88,7 +88,8 @@ SIGNAL_NOTEBOOKS = ["08_ticker_conviction", "09_theme_conviction",
 OVERLAY_NOTEBOOKS = ["11_overlay_ticker_mentions",
                      "12_overlay_ticker_first_derivative",
                      "13_overlay_theme_conviction",
-                     "14_overlay_trading_signals"]
+                     "14_overlay_trading_signals",
+                     "15_overlay_theme_trading_signals"]
 SIGNAL_FILES = ["trade_signals.parquet", "trade_signals_tickers.parquet"]
 
 # Columns that would leak the raw posts - the safety check forbids them in the

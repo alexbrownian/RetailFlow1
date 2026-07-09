@@ -135,11 +135,17 @@ def fetchlayer_poll(key, limit, max_credits=60):
     headers = {"Authorization": f"Bearer {key}"}
     all_posts, used = [], 0
     stopped = False
+    started = time.time()
+    max_seconds = 300          # whole-run time budget: never look frozen for long
+    subs = tracked_subs()
+    total_requests = len(subs) * 2
+    print(f"polling {len(subs)} subreddits x 2 passes (new + top-of-week) = "
+          f"{total_requests} requests; progress below")
     # (sort, extra request fields) - "timeframe"/"t" both sent so whichever
     # name FetchLayer expects for the top-of-week window is covered.
     passes = [("new", {}),
               ("top", {"timeframe": "week", "t": "week"})]
-    for sub in tracked_subs():
+    for sub in subs:
         if stopped:
             break
         for sort, extra in passes:
@@ -147,13 +153,34 @@ def fetchlayer_poll(key, limit, max_credits=60):
                 print(f"[stop] hit the per-run credit cap ({max_credits})")
                 stopped = True
                 break
+            if time.time() - started > max_seconds:
+                print(f"[stop] hit the {max_seconds}s time budget - keeping "
+                      f"what was fetched; next run continues")
+                stopped = True
+                break
             body = {"subreddit": sub, "sort": sort, "limit": limit}
             body.update(extra)
-            try:
-                r = requests.post(FETCHLAYER_URL, headers=headers,
-                                  json=body, timeout=30)
-            except Exception as exc:
-                print(f"[warn] {sub} ({sort}): {exc}")
+            t0 = time.time()
+            # timeout=(connect, read): fail FAST if the server is unreachable,
+            # but be PATIENT once it is working - big subreddits
+            # (personalfinance, wallstreetbets) can take >20s server-side.
+            # One retry on timeout: slow scrapes usually succeed second time.
+            r = None
+            for attempt in (1, 2):
+                try:
+                    r = requests.post(FETCHLAYER_URL, headers=headers,
+                                      json=body, timeout=(10, 60))
+                    break
+                except requests.exceptions.Timeout:
+                    if attempt == 1:
+                        print(f"  .. r/{sub:<22} {sort:<4} slow (read timeout) - retrying once")
+                    else:
+                        print(f"  {used + 1:>2}/{total_requests} r/{sub:<22} {sort:<4} "
+                              "FAILED: timed out twice - skipping this one")
+                except Exception as exc:
+                    print(f"  {used + 1:>2}/{total_requests} r/{sub:<22} {sort:<4} FAILED: {exc}")
+                    break
+            if r is None:
                 continue
             used += 1
             if r.status_code in (402, 429):
@@ -162,7 +189,8 @@ def fetchlayer_poll(key, limit, max_credits=60):
                 stopped = True
                 break
             if r.status_code != 200:
-                print(f"[warn] {sub} ({sort}): {r.status_code} {r.text[:120]}")
+                print(f"  {used:>2}/{total_requests} r/{sub:<22} {sort:<4} "
+                      f"HTTP {r.status_code}: {r.text[:80]}")
                 continue
             payload = r.json()
             posts = (payload.get("items") or payload.get("posts")
@@ -171,8 +199,11 @@ def fetchlayer_poll(key, limit, max_credits=60):
                 p["_backend"] = "fetchlayer"
                 p.setdefault("subreddit", sub)
                 all_posts.append(p)
+            print(f"  {used:>2}/{total_requests} r/{sub:<22} {sort:<4} "
+                  f"-> {len(posts):>3} posts | {time.time() - t0:4.1f}s")
             time.sleep(PAUSE_S)
-    print(f"fetchlayer: {used} credits used this run")
+    print(f"fetchlayer: {used} credits used, {len(all_posts)} posts, "
+          f"{time.time() - started:.0f}s total")
     return all_posts
 
 

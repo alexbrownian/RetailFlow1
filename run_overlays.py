@@ -32,6 +32,7 @@ OVERLAYS = [
     ("12_overlay_ticker_first_derivative", "daily_ticker_counts.parquet",   "hydrate"),
     ("13_overlay_theme_conviction",        "daily_theme_conviction.parquet", "notebook 09"),
     ("14_overlay_trading_signals",         "trade_signals_tickers.parquet", "notebook 10"),
+    ("15_overlay_theme_trading_signals",   "trade_signals.parquet",         "notebook 10"),
 ]
 
 
