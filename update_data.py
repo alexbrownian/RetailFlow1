@@ -69,8 +69,8 @@ except Exception:
     pass
 
 # ============================ EDIT THIS =============================
-START_DATE = "2018-01-01"    # inclusive, 'YYYY-MM-DD'
-END_DATE = "2019-01-01"                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
+START_DATE = "2019-01-01"    # inclusive, 'YYYY-MM-DD'
+END_DATE = "2020-01-01"                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
 PRICE_TOP_N = 150            # how many top-mentioned tickers the price pull covers
 
 FETCH_LOOKBACK_DAYS = 7      # how far back each live fetch reaches (top posts of
@@ -544,6 +544,16 @@ def main():
         os.environ["PIPELINE_END_DATE"] = ""
         log(f"full chain: building aggregates over {BUILD_START_DATE} -> today "
             f"(view window {args.start} -> {end_label} applies to the overlays)", fh)
+        # The sentiment cache belongs to the PREVIOUS slice. Its row-count
+        # validity check cannot detect staleness when sampling is on (an old
+        # 500k-sample matches a new 500k-sample), so a full rebuild must
+        # always rescore from scratch - delete the cache up front.
+        cache = os.path.join(ROOT, "data", "processed",
+                             "posts_slice_sentiment.parquet")
+        if not dry and os.path.exists(cache):
+            os.remove(cache)
+            log("deleted stale sentiment cache (posts_slice_sentiment.parquet) "
+                "- notebooks 06/07 will rescore the new slice", fh)
     elif live:
         notebooks = SIGNAL_NOTEBOOKS
         log("live: refreshing signal notebooks 08/09/10 off the aggregates", fh)

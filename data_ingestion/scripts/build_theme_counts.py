@@ -11,6 +11,7 @@
 # mentions, however many keywords match - breadth of attention.
 # Memory-safe: the slice is streamed in batches, never loaded whole.
 
+import argparse
 import os
 import sys
 
@@ -34,9 +35,31 @@ OUT_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "daily_theme_counts.p
 
 
 def main():
+    ap = argparse.ArgumentParser(description="Rebuild theme counts from the slice.")
+    ap.add_argument("--force", action="store_true",
+                    help="rebuild even if the existing file already covers the slice")
+    args = ap.parse_args()
+
     if not os.path.exists(SLICE_PATH):
         print("no posts_slice.parquet - run notebook 01 (or update_data.py --full) first.")
         return 1
+
+    # SKIP when already done: if the existing theme counts cover the slice's
+    # date range with the current theme set, there is nothing to rebuild -
+    # live runs keep appending new days on top. --force overrides (needed
+    # after changing THEME_KEYWORDS, which alters history, not just dates).
+    if os.path.exists(OUT_PATH) and not args.force:
+        existing = pd.read_parquet(OUT_PATH, columns=["date"])
+        slice_dates = pq.read_table(SLICE_PATH, columns=["date"]).to_pandas()["date"]
+        have_lo = pd.to_datetime(existing["date"]).min()
+        have_hi = pd.to_datetime(existing["date"]).max()
+        need_lo = pd.to_datetime(slice_dates.min())
+        need_hi = pd.to_datetime(slice_dates.max())
+        if have_lo <= need_lo and have_hi >= need_hi - pd.Timedelta(days=2):
+            print(f"theme counts already cover {have_lo.date()} -> {have_hi.date()} "
+                  "- nothing to rebuild (use --force after changing THEME_KEYWORDS, "
+                  "since new keywords alter history, not just dates).")
+            return 0
 
     pf = pq.ParquetFile(SLICE_PATH)
     total = pf.metadata.num_rows
