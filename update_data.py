@@ -559,6 +559,15 @@ def main():
         if code != 0:
             log(f"ABORT: notebook {nb} failed - later steps skipped", fh)
             return 1
+        if full_chain and nb == "02_mentions_over_time":
+            # theme COUNTS are the one aggregate the notebooks do not build -
+            # rebuild them over the same slice notebook 01 just wrote
+            log("building theme counts over the full slice", fh)
+            code = run([py, "data_ingestion/scripts/build_theme_counts.py"],
+                       fh, dry, show=True)
+            if code != 0:
+                log("ABORT: theme counts build failed", fh)
+                return 1
     # restore the VIEW window for the overlays + price pull
     os.environ["PIPELINE_START_DATE"] = args.start
     os.environ["PIPELINE_END_DATE"] = args.end
