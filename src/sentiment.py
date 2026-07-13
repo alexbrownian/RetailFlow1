@@ -74,14 +74,38 @@ BULL_CUTOFF = 0.05      # VADER convention: compound > +0.05 = positive post
 BEAR_CUTOFF = -0.05     #                   compound < -0.05 = negative post
 
 _ANALYZER: SentimentIntensityAnalyzer | None = None
+SENTIMENT_ENGINE = "vader+wsb"      # reported by get_analyzer(); becomes
+                                    # "finvader+wsb" when finvader is installed
+
+
+def _finvader_lexicons() -> dict:
+    """FinVADER's two financial dictionaries (SentiBignomics ~7.3k terms,
+    Henry ~190 terms), if the finvader package is installed. They fix plain
+    VADER's blind spots on finance language ('impairment', 'covenant
+    breach', 'guidance raised'...). Returns {} when unavailable, so the
+    engine degrades gracefully to classic VADER."""
+    try:
+        from finvader.SentiBignomics import lexicon1
+        from finvader.Henry import lexicon2
+        return {**lexicon1(), **lexicon2()}
+    except Exception:
+        return {}
 
 
 def get_analyzer() -> SentimentIntensityAnalyzer:
-    """One analyzer, WSB lexicon merged in, built on first use."""
-    global _ANALYZER
+    """One analyzer, built on first use. Lexicon layering (later wins):
+    VADER base -> FinVADER financial dictionaries -> WSB slang. The slang
+    goes last so meme vocabulary keeps its hand-set valences."""
+    global _ANALYZER, SENTIMENT_ENGINE
     if _ANALYZER is None:
         _ANALYZER = SentimentIntensityAnalyzer()
+        fin = _finvader_lexicons()
+        if fin:
+            _ANALYZER.lexicon.update(fin)
+            SENTIMENT_ENGINE = "finvader+wsb"
         _ANALYZER.lexicon.update(WSB_LEXICON)
+        print(f"sentiment engine: {SENTIMENT_ENGINE} "
+              f"({len(_ANALYZER.lexicon):,} lexicon terms)")
     return _ANALYZER
 
 

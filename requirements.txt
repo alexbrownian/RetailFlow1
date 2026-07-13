@@ -12,6 +12,7 @@ wordfreq
 huggingface_hub
 fsspec
 vaderSentiment
+finvader
 joblib
 pytest
 pip-system-certs
