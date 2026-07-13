@@ -69,8 +69,8 @@ except Exception:
     pass
 
 # ============================ EDIT THIS =============================
-START_DATE = "2019-01-01"    # inclusive, 'YYYY-MM-DD'
-END_DATE = "2020-01-01"                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
+START_DATE = "2022-01-01"    # inclusive, 'YYYY-MM-DD'
+END_DATE = "2023-01-01"                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
 PRICE_TOP_N = 150            # how many top-mentioned tickers the price pull covers
 
 FETCH_LOOKBACK_DAYS = 7      # how far back each live fetch reaches (top posts of
@@ -96,10 +96,12 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(ROOT, "logs")
 SNAP_DIR = os.path.join(ROOT, "data", "processed", "signal_snapshots")
 
-# The FULL chain rebuilds everything from raw text (slow: 01 slices the raw
-# store, 06/07 re-score sentiment). Only the external machine can run it.
-FULL_CHAIN_NOTEBOOKS = ["01_clean_data", "02_mentions_over_time",
-                        "06_ticker_sentiment", "07_theme_sentiment",
+# The FULL chain: notebook 01 (slice + word-ticker screening), then
+# build_aggregates.py replaces notebooks 02/06/07 + the theme scan with ONE
+# parallel pass (each post processed once; sentiment from the permanent
+# id->score store, so only never-seen posts are ever scored), then the
+# signal notebooks. External machine only.
+FULL_CHAIN_NOTEBOOKS = ["01_clean_data",
                         "08_ticker_conviction", "09_theme_conviction",
                         "10_trading_signals"]
 # The SIGNAL notebooks read only the text-free aggregates - fast, and they
@@ -544,16 +546,7 @@ def main():
         os.environ["PIPELINE_END_DATE"] = ""
         log(f"full chain: building aggregates over {BUILD_START_DATE} -> today "
             f"(view window {args.start} -> {end_label} applies to the overlays)", fh)
-        # The sentiment cache belongs to the PREVIOUS slice. Its row-count
-        # validity check cannot detect staleness when sampling is on (an old
-        # 500k-sample matches a new 500k-sample), so a full rebuild must
-        # always rescore from scratch - delete the cache up front.
-        cache = os.path.join(ROOT, "data", "processed",
-                             "posts_slice_sentiment.parquet")
-        if not dry and os.path.exists(cache):
-            os.remove(cache)
-            log("deleted stale sentiment cache (posts_slice_sentiment.parquet) "
-                "- notebooks 06/07 will rescore the new slice", fh)
+
     elif live:
         notebooks = SIGNAL_NOTEBOOKS
         log("live: refreshing signal notebooks 08/09/10 off the aggregates", fh)
@@ -570,14 +563,16 @@ def main():
         if code != 0:
             log(f"ABORT: notebook {nb} failed - later steps skipped", fh)
             return 1
-        if full_chain and nb == "02_mentions_over_time":
-            # theme COUNTS are the one aggregate the notebooks do not build -
-            # rebuild them over the same slice notebook 01 just wrote
-            log("building theme counts over the full slice", fh)
-            code = run([py, "data_ingestion/scripts/build_theme_counts.py"],
-                       fh, dry, show=True)
+        if full_chain and nb == "01_clean_data":
+            # ONE parallel pass builds all five aggregates (replaces
+            # notebooks 02/06/07 + the theme scan). Sentiment comes from the
+            # permanent id->score store: only never-seen posts are scored.
+            log(f"building all aggregates over {BUILD_START_DATE} -> today "
+                "(one parallel pass; cached sentiment)", fh)
+            code = run([py, "data_ingestion/scripts/build_aggregates.py",
+                        "--start", BUILD_START_DATE], fh, dry, show=True)
             if code != 0:
-                log("ABORT: theme counts build failed", fh)
+                log("ABORT: aggregate build failed", fh)
                 return 1
     # restore the VIEW window for the overlays + price pull
     os.environ["PIPELINE_START_DATE"] = args.start

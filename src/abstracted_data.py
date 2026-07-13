@@ -257,7 +257,7 @@ def aggregate_posts(posts_df, universe=None, cashtags_only=False):
 
     Uses build_mentions + sentiment exactly like notebooks 02/06/07 do."""
     from src.build_mentions import build_daily_counts
-    from src.sentiment import (add_sentiment_fast,
+    from src.sentiment import (add_sentiment_cached,
                                build_daily_ticker_sentiment,
                                build_daily_theme_sentiment)
 
@@ -277,8 +277,9 @@ def aggregate_posts(posts_df, universe=None, cashtags_only=False):
         by_source = pd.DataFrame(columns=["date", "ticker", "mention_count", "source"])
     counts = by_source.groupby(["date", "ticker"], as_index=False)["mention_count"].sum()
 
-    # ---- sentiment: score once, then roll up per ticker and per theme
-    posts_scored = add_sentiment_fast(posts_df)
+    # ---- sentiment: look up the permanent score store first, then score
+    # only posts never seen before, then roll up per ticker and per theme
+    posts_scored = add_sentiment_cached(posts_df)
     ticker_sent = build_daily_ticker_sentiment(posts_scored, universe,
                                                cashtags_only=cashtags_only)
     theme_sent = build_daily_theme_sentiment(posts_scored)

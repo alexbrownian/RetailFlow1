@@ -85,9 +85,20 @@ def _finvader_lexicons() -> dict:
     breach', 'guidance raised'...). Returns {} when unavailable, so the
     engine degrades gracefully to classic VADER."""
     try:
-        from finvader.SentiBignomics import lexicon1
-        from finvader.Henry import lexicon2
-        return {**lexicon1(), **lexicon2()}
+        # importing finvader triggers nltk.download("vader_lexicon"), which
+        # phones the NLTK server to compare versions EVERY time - one network
+        # round-trip per worker process, the main startup cost of a parallel
+        # scoring run. The lexicon file is already on disk, so temporarily
+        # no-op the downloader while the package initialises.
+        import nltk
+        real_download = nltk.download
+        nltk.download = lambda *args, **kwargs: True
+        try:
+            from finvader.SentiBignomics import lexicon1
+            from finvader.Henry import lexicon2
+            return {**lexicon1(), **lexicon2()}
+        finally:
+            nltk.download = real_download
     except Exception:
         return {}
 
@@ -104,8 +115,13 @@ def get_analyzer() -> SentimentIntensityAnalyzer:
             _ANALYZER.lexicon.update(fin)
             SENTIMENT_ENGINE = "finvader+wsb"
         _ANALYZER.lexicon.update(WSB_LEXICON)
-        print(f"sentiment engine: {SENTIMENT_ENGINE} "
-              f"({len(_ANALYZER.lexicon):,} lexicon terms)")
+        # only the MAIN process announces the engine - the parallel workers
+        # each build their own analyzer too, which used to print this line
+        # once per core and flood the log
+        import multiprocessing
+        if multiprocessing.parent_process() is None:
+            print(f"sentiment engine: {SENTIMENT_ENGINE} "
+                  f"({len(_ANALYZER.lexicon):,} lexicon terms)")
     return _ANALYZER
 
 
@@ -154,6 +170,65 @@ def add_sentiment_fast(posts_df: pd.DataFrame, n_jobs: int = -1,
 
     out = posts_df.copy()
     out["sentiment"] = [s for part in results for s in part]
+    return out
+
+
+# ---------------------------------------------------------------------------
+# PERMANENT SCORE STORE - every post is scored exactly ONCE per engine.
+# The store (id, sentiment) appends forever; any rebuild or live fold looks
+# scores up by post id and only scores the ids it has never seen. A post's
+# score never changes for a given engine, so this is always correct - and it
+# removes the stale-cache class of bugs entirely (the store is keyed by the
+# ENGINE NAME in its filename, so switching engines rescoring automatically).
+# ---------------------------------------------------------------------------
+def get_engine_name() -> str:
+    """The active engine, decided WITHOUT building the analyzer.
+    find_spec only checks whether the package EXISTS on disk - it does not
+    run finvader's __init__ (which would trigger an nltk network check)."""
+    import importlib.util
+    if importlib.util.find_spec("finvader") is not None:
+        return "finvader+wsb"
+    return "vader+wsb"
+
+
+def _store_path() -> str:
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    safe = get_engine_name().replace("+", "_")
+    return os.path.join(root, "data", "processed", f"sentiment_scores_{safe}.parquet")
+
+
+def add_sentiment_cached(posts_df: pd.DataFrame, n_jobs: int = -1) -> pd.DataFrame:
+    """add_sentiment_fast + the permanent store: known ids are looked up,
+    unknown ids are scored in parallel and APPENDED to the store. After the
+    first full build, historical rebuilds cost a lookup, not a rescore."""
+    import os
+
+    path = _store_path()
+    known = pd.DataFrame(columns=["id", "sentiment"])
+    if os.path.exists(path):
+        known = pd.read_parquet(path)
+
+    ids = posts_df["id"].astype(str)
+    known_map = known.set_index("id")["sentiment"] if len(known) else pd.Series(dtype=float)
+    hit = ids.isin(known_map.index)
+    n_new = int((~hit).sum())
+    print(f"sentiment store [{get_engine_name()}]: {int(hit.sum()):,} cached, "
+          f"{n_new:,} new to score")
+
+    out = posts_df.copy()
+    out["sentiment"] = ids.map(known_map).values
+    if n_new:
+        fresh = add_sentiment_fast(posts_df.loc[~hit.values], n_jobs=n_jobs)
+        out.loc[~hit.values, "sentiment"] = fresh["sentiment"].values
+        addition = pd.DataFrame({"id": ids[~hit.values].values,
+                                 "sentiment": fresh["sentiment"].values})
+        combined = (pd.concat([known, addition], ignore_index=True)
+                    .drop_duplicates(subset="id", keep="first"))
+        tmp = path + ".tmp"
+        combined.to_parquet(tmp, index=False)
+        os.replace(tmp, path)
+        print(f"sentiment store now holds {len(combined):,} scored posts")
     return out
 
 
