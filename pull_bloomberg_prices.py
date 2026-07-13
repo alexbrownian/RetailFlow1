@@ -2,8 +2,9 @@
 """
 pull_bloomberg_prices.py - daily close prices from the Bloomberg Terminal API.
 
-Runs on the INTERNAL machine (the one with the Terminal + blpapi installed),
-after update_data.py, so the tickers pulled match what the notebooks show:
+Runs on any machine with a Bloomberg Terminal + blpapi installed (both
+machines have access), after update_data.py, so the tickers pulled match
+what the notebooks show:
 
     python pull_bloomberg_prices.py            # connect + pull + save
     python pull_bloomberg_prices.py --dry-run  # show what WOULD be pulled, no connect

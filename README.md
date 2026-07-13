@@ -28,7 +28,7 @@ signals, and snapshots them. The date window at the top of the file selects
                           notebooks 08/09/10: conviction (z-scores)
                           and BUY/SELL signals with reasons
                                              │
-             pull_bloomberg_prices.py ───────┤ (internal machine, PX_LAST)
+             pull_bloomberg_prices.py ───────┤ (either machine, PX_LAST)
                                              ▼
                           notebooks 11–16: price overlays
                           (mentions, velocity, conviction, signals)
@@ -38,8 +38,9 @@ signals, and snapshots them. The date window at the top of the file selects
 - The **external machine** holds the raw post store (`posts.parquet`,
   ~10.8M posts, gitignored) and can rebuild every aggregate from raw text.
 - The **internal machine** holds only `ABSTRACTED_DATA/` (committed, ~2 MB,
-  text-free) plus the Bloomberg Terminal for prices. Notebooks 01–07 require
-  raw text and never run there; 08–16 run in full.
+  text-free). Notebooks 01–07 require raw text and never run there; 08–16
+  run in full. Bloomberg Terminal access exists on both machines, so the
+  price overlays render everywhere.
 - Every run ends with a safety check that the committed aggregates carry no
   text-bearing columns.
 
@@ -137,8 +138,9 @@ into single high-conviction markers.
   on any watchlist (the extractor finds every valid ticker in post text).
 - **StockTwits**: public symbol streams, no key. Users label their own posts
   Bullish/Bearish — ground truth for calibrating the sentiment engine.
-- **Bloomberg**: PX_LAST daily closes via blpapi (internal machine only;
-  prices stay local for licensing reasons).
+- **Bloomberg**: PX_LAST daily closes via blpapi (available on both
+  machines; the prices file stays local and gitignored for licensing
+  reasons).
 
 ## Setup
 

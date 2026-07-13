@@ -27,10 +27,11 @@ RUNS ON BOTH MACHINES (auto-detected)
         Holds the raw post store. Live mode merges new posts into the store
         and splices the aggregate tail; --full rebuilds every aggregate over
         the whole build range from raw text.
-    * INTERNAL machine (no posts.parquet; Bloomberg Terminal available)
+    * INTERNAL machine (no posts.parquet)
         Holds only ABSTRACTED_DATA - text-free daily aggregates. Live posts
         fold straight into the aggregates. Notebooks 01-07 require raw text
-        and therefore never run here; 08-16 run in full.
+        and therefore never run here; 08-16 run in full. (Bloomberg access
+        exists on BOTH machines - the machine split is about raw text only.)
     Either way the run ends by verifying ABSTRACTED_DATA carries no raw text.
 
 EVERY RUN ALSO PRINTS
@@ -635,7 +636,7 @@ def main():
                 s = pd.read_parquet(path_)
                 log(f"  {label:<13} : {len(s)} on file", fh)
         prices_path = os.path.join(ROOT, "data", "prices", "prices.parquet")
-        log(f"  price overlays: {'rendered (11-16)' if os.path.exists(prices_path) and not args.skip_overlays else 'skipped (no prices.parquet on this machine)'}", fh)
+        log(f"  price overlays: {'rendered (11-16)' if os.path.exists(prices_path) and not args.skip_overlays else 'skipped (open the Bloomberg Terminal and re-run, or: python run_overlays.py)'}", fh)
         log(f"  safety check  : {'PASS' if safe else 'FAIL - do NOT commit ABSTRACTED_DATA'}", fh)
         log("=" * 60, fh)
     return 0 if safe else 1

@@ -39,11 +39,16 @@ ends with the text-free **safety check** on ABSTRACTED_DATA.
 
 ## Which notebooks run where
 
-| Notebooks | External machine (raw store) | Internal machine (Bloomberg) |
+| Notebooks | External machine (raw store) | Internal machine |
 |---|---|---|
 | 01–07 (raw text: slice, mentions, sentiment) | full chain / `--full` | never — they need `posts.parquet`, which must not exist there |
 | 08–10 (conviction + signals, text-free) | every run | every run |
-| 11–16 (price overlays) | every run (needs prices) | every run — the Terminal lives here |
+| 11–16 (price overlays) | every run | every run |
+
+Bloomberg Terminal + blpapi access exists on **both** machines, so the
+overlays render everywhere; the machine split is about raw post text only.
+`data/prices/prices.parquet` stays local on each machine (gitignored —
+licensing).
 
 ## Initial setup (once per machine)
 
@@ -65,7 +70,7 @@ python -c "from src import abstracted_data; abstracted_data.hydrate()"
 into `data/processed/`, where the notebooks look. After this one step,
 `update_data.py` keeps the two in sync automatically.
 
-For the Bloomberg overlays, install blpapi once (Terminal running):
+For the Bloomberg overlays, install blpapi once per machine (Terminal running):
 
 ```powershell
 python -m pip install --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi --user

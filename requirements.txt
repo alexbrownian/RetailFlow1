@@ -16,7 +16,7 @@ joblib
 pytest
 pip-system-certs
 
-# blpapi (Bloomberg, INTERNAL machine only, for pull_bloomberg_prices.py) is not
-# on PyPI. Install it separately from Bloomberg's own index, with the Terminal
-# running:
+# blpapi (Bloomberg, for pull_bloomberg_prices.py - install on each machine)
+# is not on PyPI. Install it separately from Bloomberg's own index, with the
+# Terminal running:
 #   python -m pip install --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi --user
