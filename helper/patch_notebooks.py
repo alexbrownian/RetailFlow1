@@ -174,8 +174,9 @@ for nb, code in SPIKE.items():
         src = "".join(c["source"])
         if c["cell_type"] == "code" and ("LAG-ALIGNED TIME SERIES" in src
                                          or "SPIKE EVIDENCE" in src):
-            if "SPIKE EVIDENCE" in src and src.strip() == code.strip():
-                replaced = "current"
+            if "DIRECTION FLIPS" in src or (
+                    "SPIKE EVIDENCE" in src and src.strip() == code.strip()):
+                replaced = "current"    # v2 flip cells (patch 6) supersede
                 break
             c["source"] = code.splitlines(keepends=True)
             c["outputs"] = []
@@ -195,4 +196,196 @@ for nb, code in SPIKE.items():
     print(f"spike-evidence {'added' if appended else 'installed'}"
           + (" (duplicates removed)" if deduped else "") + f": {nb}")
 
-print("all patches processed (v3).")
+# ---- patch 6: DIRECTION FLIPS replace the one-sided spike view ---------------
+# The spike view only marked positive chatter bursts. This marks TURNING
+# POINTS in both directions: the day the smoothed chatter change crosses
+# from negative to positive (green up-triangle) and from positive to
+# negative (red down-triangle), each with the average price move over the
+# measured lead window - so the chart shows whether direction changes in
+# attention anticipate direction changes in price.
+MD_FLIP = """## Evidence view: chatter DIRECTION FLIPS marked on the price chart
+
+No transformations - the price line is untouched. A green up-triangle marks
+the day the smoothed chatter change TURNS POSITIVE (crowd re-engaging), a
+red down-triangle the day it TURNS NEGATIVE (crowd losing interest). The
+shading covers the measured lead window after each flip; the title compares
+the average price move after each direction against the baseline drift.
+**If green flips sit in front of rallies and red flips in front of fades,
+attention direction leads price direction** - visible at a glance."""
+
+FLIP = {}
+FLIP["12_overlay_ticker_first_derivative"] = """# ==== SPIKE EVIDENCE v2 - DIRECTION FLIPS (tickers): turning points on price ====
+SHOW_N   = 3      # how many of the plotted names to draw
+MIN_GAP  = 7      # days between counted flips (first in a burst wins)
+EPS_STD  = 0.25   # noise floor: a flip only counts once |change| clears this
+                  # many std devs - micro-wiggles around zero are ignored
+if curves:
+    for name in names[:SHOW_N]:
+        if name not in curves:
+            continue
+        c = pd.Series(curves[name], index=lags)
+        k = max(int(c.idxmax()), 1) if c.notna().any() else 1
+        m = (counts_ll[counts_ll['ticker'] == name].sort_values('date')
+             .set_index('date')['mention_count'].asfreq('D').fillna(0))
+        if NORMALISE:
+            totals = day_totals_ll.reindex(m.index).fillna(0).astype('float64')
+            m = (m.astype('float64') / totals.where(totals > 0)) * 100
+            m[totals < MIN_TOTAL] = float('nan')
+        px = price_series(prices_ll, name)
+        if px.empty:
+            continue
+        base_line = m.rolling(WINDOW, min_periods=1).mean() if NORMALISE else m.rolling(WINDOW).sum()
+        chg = base_line.diff().rolling(DERIV_SMOOTH, min_periods=1).mean()
+        eps = float(chg.std() * EPS_STD) if chg.notna().any() else 0.0
+
+        # state machine: +1 once change clears +eps, -1 once it clears -eps.
+        # A flip = entering the opposite state (hysteresis kills noise).
+        up, down, state = [], [], 0
+        for d, v in chg.dropna().items():
+            if state <= 0 and v > eps:
+                if not up or (d - up[-1]).days >= MIN_GAP:
+                    up.append(d)
+                state = 1
+            elif state >= 0 and v < -eps:
+                if not down or (d - down[-1]).days >= MIN_GAP:
+                    down.append(d)
+                state = -1
+
+        def fwd_moves(events):
+            out = []
+            for d in events:
+                p0 = px.asof(d); p1 = px.asof(d + pd.Timedelta(days=k))
+                if pd.notna(p0) and pd.notna(p1) and p0 != 0:
+                    out.append((p1 / p0 - 1) * 100)
+            return out
+        up_mv, dn_mv = fwd_moves(up), fwd_moves(down)
+        baseline = ((px.shift(-k) / px - 1) * 100).mean()
+        if not up_mv and not dn_mv:
+            print(f'{name}: no scoreable direction flips in this window')
+            continue
+
+        fig, ax = plt.subplots(figsize=(13, 5))
+        ax.plot(px.index, px.values, color='black', linewidth=1.4, label='price')
+        for i, d in enumerate(up):
+            ax.axvspan(d, d + pd.Timedelta(days=k), color='tab:green', alpha=0.08)
+            pa = px.asof(d)
+            if pd.notna(pa):
+                ax.scatter([d], [pa], marker='^', s=110, color='tab:green',
+                           edgecolors='black', linewidths=0.8, zorder=5,
+                           label='chatter change turns POSITIVE' if i == 0 else None)
+        for i, d in enumerate(down):
+            ax.axvspan(d, d + pd.Timedelta(days=k), color='tab:red', alpha=0.08)
+            pa = px.asof(d)
+            if pd.notna(pa):
+                ax.scatter([d], [pa], marker='v', s=110, color='tab:red',
+                           edgecolors='black', linewidths=0.8, zorder=5,
+                           label='chatter change turns NEGATIVE' if i == 0 else None)
+        up_s = (f'{len(up_mv)} pos flips avg {sum(up_mv)/len(up_mv):+.1f}%'
+                if up_mv else 'no pos flips')
+        dn_s = (f'{len(dn_mv)} neg flips avg {sum(dn_mv)/len(dn_mv):+.1f}%'
+                if dn_mv else 'no neg flips')
+        ax.set_title(f'{name}: chatter direction flips vs price - moves over the next {k}d\\n'
+                     f'{up_s} | {dn_s} | baseline {baseline:+.1f}%')
+        ax.set_ylabel('price (USD)')
+        ax.legend(loc='upper left'); ax.grid(True, alpha=0.3)
+        set_date_ticks(ax, X_TICKS)
+        fig.tight_layout(); plt.show()"""
+
+FLIP["13_overlay_theme_first_derivative"] = (
+    FLIP["12_overlay_ticker_first_derivative"]
+    .replace("(tickers): turning points", "(themes): turning points")
+    .replace("counts_ll['ticker'] == name", "counts_ll['theme'] == name")
+    .replace("px = price_series(prices_ll, name)",
+             "px = price_series(prices_ll, THEME_ETFS.get(name, ''))"))
+
+FLIP["14_overlay_theme_conviction"] = """# ==== SPIKE EVIDENCE v2 - DIRECTION FLIPS (conviction): crossings on ETF price ====
+SHOW_N   = 3
+CROSS_AT = 1.5    # an event = conviction_z crossing +CROSS_AT (bullish) or
+MIN_GAP  = 10     # -CROSS_AT (bearish); days between counted events
+if curves:
+    for theme_name in list(curves)[:SHOW_N]:
+        c = pd.Series(curves[theme_name], index=lags)
+        k = max(int(c.idxmax()), 1) if c.notna().any() else 1
+        etf = THEME_ETFS.get(theme_name)
+        one = prices_ll[prices_ll['symbol'] == etf].sort_values('date')
+        px = one.set_index('date')['px_last'].asfreq('D').ffill()
+        cz = (conv_ll[conv_ll['theme'] == theme_name].sort_values('date')
+              .set_index('date')['conviction_z'].asfreq('D').ffill())
+
+        def spaced(idx, gap):
+            out = []
+            for d in idx:
+                if not out or (d - out[-1]).days >= gap:
+                    out.append(d)
+            return out
+        up = spaced(cz[(cz > CROSS_AT) & (cz.shift(1) <= CROSS_AT)].index, MIN_GAP)
+        down = spaced(cz[(cz < -CROSS_AT) & (cz.shift(1) >= -CROSS_AT)].index, MIN_GAP)
+
+        def fwd_moves(events):
+            out = []
+            for d in events:
+                p0 = px.asof(d); p1 = px.asof(d + pd.Timedelta(days=k))
+                if pd.notna(p0) and pd.notna(p1) and p0 != 0:
+                    out.append((p1 / p0 - 1) * 100)
+            return out
+        up_mv, dn_mv = fwd_moves(up), fwd_moves(down)
+        baseline = ((px.shift(-k) / px - 1) * 100).mean()
+        if not up_mv and not dn_mv:
+            print(f'{theme_name}: no scoreable conviction crossings in this window')
+            continue
+
+        fig, ax = plt.subplots(figsize=(13, 5))
+        ax.plot(px.index, px.values, color='black', linewidth=1.4, label=f'{etf} price')
+        for i, d in enumerate(up):
+            ax.axvspan(d, d + pd.Timedelta(days=k), color='tab:green', alpha=0.08)
+            pa = px.asof(d)
+            if pd.notna(pa):
+                ax.scatter([d], [pa], marker='^', s=110, color='tab:green',
+                           edgecolors='black', linewidths=0.8, zorder=5,
+                           label=f'conviction crosses +{CROSS_AT}' if i == 0 else None)
+        for i, d in enumerate(down):
+            ax.axvspan(d, d + pd.Timedelta(days=k), color='tab:red', alpha=0.08)
+            pa = px.asof(d)
+            if pd.notna(pa):
+                ax.scatter([d], [pa], marker='v', s=110, color='tab:red',
+                           edgecolors='black', linewidths=0.8, zorder=5,
+                           label=f'conviction crosses -{CROSS_AT}' if i == 0 else None)
+        up_s = (f'{len(up_mv)} bullish avg {sum(up_mv)/len(up_mv):+.1f}%'
+                if up_mv else 'no bullish crossings')
+        dn_s = (f'{len(dn_mv)} bearish avg {sum(dn_mv)/len(dn_mv):+.1f}%'
+                if dn_mv else 'no bearish crossings')
+        ax.set_title(f'{theme_name}: conviction crossings vs {etf} - moves over the next {k}d\\n'
+                     f'{up_s} | {dn_s} | baseline {baseline:+.1f}%')
+        ax.set_ylabel('price (USD)')
+        ax.legend(loc='upper left'); ax.grid(True, alpha=0.3)
+        set_date_ticks(ax, X_TICKS)
+        fig.tight_layout(); plt.show()"""
+
+for nb, code in FLIP.items():
+    d = load(nb)
+    replaced = appended = False
+    for c in d["cells"]:
+        src = "".join(c["source"])
+        if c["cell_type"] == "code" and ("SPIKE EVIDENCE" in src
+                                         or "LAG-ALIGNED TIME SERIES" in src):
+            if "DIRECTION FLIPS" in src and src.strip() == code.strip():
+                replaced = "current"
+                break
+            c["source"] = code.splitlines(keepends=True)
+            c["outputs"] = []
+            c["execution_count"] = None
+            replaced = True
+        elif c["cell_type"] == "markdown" and ("Evidence view" in src
+                                               or "Lag-aligned view" in src):
+            c["source"] = MD_FLIP.splitlines(keepends=True)
+    if replaced == "current":
+        print(f"direction-flip evidence already current: {nb}")
+        continue
+    if not replaced:
+        d["cells"].append(cell("markdown", MD_FLIP))
+        d["cells"].append(cell("code", code))
+        appended = True
+    save(nb, d)
+    print(f"direction-flip evidence {'added' if appended else 'installed'}: {nb}")
+
+print("all patches processed (v4).")
