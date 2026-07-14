@@ -72,6 +72,14 @@ DISCOVERY_QUERIES = [
     '(earnings OR guidance) (beat OR miss OR surged OR crashed) min_faves:20 lang:en -is:retweet',
     '(bitcoin OR ethereum OR crypto) (buy OR rally OR crash) min_faves:50 lang:en -is:retweet',
     '("bought shares" OR "loading up" OR "all in on") min_faves:10 lang:en -is:retweet',
+    # sector channels - niche trades live in niche vocabulary, and the broad
+    # queries above rarely surface them (lower min_faves: smaller communities)
+    '(robotics OR humanoid OR bearings OR actuators) (stock OR stocks OR supplier OR trade) min_faves:10 lang:en -is:retweet',
+    '("data center" OR datacenter OR "AI capex" OR GPUs) (stock OR stocks OR power OR demand) min_faves:20 lang:en -is:retweet',
+    '(defense OR defence OR rearmament OR NATO) (stocks OR contractor OR budget) min_faves:10 lang:en -is:retweet',
+    '(uranium OR copper OR "rare earth" OR lithium) (stocks OR miners OR price) min_faves:10 lang:en -is:retweet',
+    '(Rheinmetall OR Nikkei OR "European stocks" OR Softbank OR TSMC) min_faves:10 lang:en -is:retweet',
+    '(Fed OR inflation OR "rate cut" OR recession) (stocks OR market) min_faves:50 lang:en -is:retweet',
 ]
 STATUS_ID = re.compile(r"/status/(\d+)")
 
@@ -328,7 +336,7 @@ def main():
     p = argparse.ArgumentParser(description="Live X ingestion (FetchLayer or official v2 API)")
     p.add_argument("--test", action="store_true",
                    help="ONE small call, prints the tweets, writes nothing")
-    p.add_argument("--max-tweets", type=int, default=1500,
+    p.add_argument("--max-tweets", type=int, default=3000,
                    help="budget cap per run (Top-of-week + Latest passes)")
     p.add_argument("--max-credits", type=int, default=60,
                    help="FetchLayer credit cap per run (1 credit per request)")

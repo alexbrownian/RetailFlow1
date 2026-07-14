@@ -75,7 +75,10 @@ THEME_KEYWORDS: dict[str, list[str]] = {
         "fab", "wafer", "foundry", "lithography", "EUV",
         "TSMC", "Intel", "Broadcom", "Qualcomm", "Texas Instruments",
         "Marvell", "ON Semiconductor", "Microchip", "ASML",
-        "silicon", "process node", "3nm", "5nm", "7nm",
+        "silicon", "process node", "3nm", "5nm", "7nm", "2nm",
+        "advanced packaging", "CoWoS", "chiplet", "chiplets",
+        "Tokyo Electron", "Advantest", "Lasertec", "Disco Corp",
+        "SUMCO", "photoresist", "wafer fab equipment", "tape out",
     ],
     "memory": [
         "memory", "DRAM", "HBM", "HBM2", "HBM3", "HBM4",
@@ -90,11 +93,17 @@ THEME_KEYWORDS: dict[str, list[str]] = {
         "neural network", "AI training", "AI chip",
         "data center AI", "Nvidia AI", "CUDA", "transformer",
         "foundation model", "AGI", "OpenAI", "Anthropic",
+        "inference", "AI agent", "AI agents", "agentic", "copilot",
+        "Gemini", "Claude", "DeepSeek", "Mistral", "xAI", "Grok",
+        "AI capex", "AI bubble", "AI spending", "GPU", "GPUs",
     ],
     "datacenters": [
         "data center", "datacenter", "data centre", "datacenters",
         "colocation", "server farm", "hyperscale", "GPU cluster",
         "server rack", "compute capacity", "cloud infrastructure",
+        "liquid cooling", "immersion cooling", "power density",
+        "data center power", "gigawatt", "transformers shortage",
+        "Stargate", "CoreWeave", "neocloud",
     ],
     "ai_megacap": [
         "Nvidia", "Microsoft", "Google", "Alphabet",
@@ -107,12 +116,18 @@ THEME_KEYWORDS: dict[str, list[str]] = {
         "defi", "blockchain", "altcoin", "NFT", "web3",
         "Coinbase", "MicroStrategy", "stablecoin",
         "halving", "mining rig", "hash rate",
+        "XRP", "Ripple", "Solana", "dogecoin", "memecoin", "memecoins",
+        "Tether", "USDC", "spot ETF", "onchain", "on-chain",
+        "staking", "airdrop", "tokenized", "tokenization",
     ],
     "gold_metals": [
         "gold", "silver", "precious metal", "metals",
         "Newmont", "Barrick", "Agnico", "Freeport",
         "copper", "platinum", "palladium",
         "commodity", "commodities", "inflation hedge",
+        "rare earth", "rare earths", "neodymium", "lithium miner",
+        "gold miner", "gold miners", "bullion", "central bank buying",
+        "cobalt", "nickel", "antimony", "gallium", "germanium",
     ],
     "energy": [
         "oil", "crude", "WTI", "Brent", "natural gas", "LNG",
@@ -126,6 +141,9 @@ THEME_KEYWORDS: dict[str, list[str]] = {
         "battery", "lithium", "lithium ion", "charging station",
         "solar", "wind energy", "renewable", "clean energy",
         "Enphase", "First Solar",
+        "BYD", "CATL", "solid state battery", "solid-state battery",
+        "battery maker", "gigafactory", "cathode", "anode", "LFP",
+        "Panasonic battery", "EV sales", "EV demand",
     ],
     "uranium_nuclear": [
         "uranium", "nuclear", "nuclear power", "nuclear energy",
@@ -138,12 +156,16 @@ THEME_KEYWORDS: dict[str, list[str]] = {
         "Lockheed", "Raytheon", "Northrop", "General Dynamics",
         "Pentagon", "missile", "missiles", "artillery", "munitions",
         "air defense", "military contract", "defense contractor",
+        "drone", "drones", "counter-drone", "drone warfare", "UAV",
+        "Anduril", "Palantir defense", "hypersonic", "golden dome",
     ],
     "europe_defense": [
         "Rheinmetall", "BAE Systems", "Thales", "Saab",
         "European defense", "European defence", "EU defense",
         "rearmament", "rearm", "German defense",
         "NATO spending", "NATO target", "defense procurement",
+        "Leonardo", "Hensoldt", "Kongsberg", "Renk", "Dassault",
+        "Airbus defence", "MBDA", "Eurofighter", "Gripen",
     ],
     "short_squeeze": [
         "short squeeze", "gamma squeeze", "squeeze", "short interest",
@@ -235,15 +257,33 @@ THEME_KEYWORDS: dict[str, list[str]] = {
     "robotics_automation": [
         "robotics", "robots", "humanoid", "humanoids", "automation",
         "industrial automation", "robotaxi", "self-driving", "autonomous vehicle",
+        # the physical supply chain - where the humanoid trade actually trades
+        "bearings", "ball bearing", "ball bearings", "actuator", "actuators",
+        "servo", "servos", "harmonic drive", "strain wave", "gearbox",
+        "reducer", "reducers", "planetary gear", "linear guide", "ball screw",
+        "motion control", "end effector", "gripper", "grippers",
+        "torque sensor", "force sensor", "lidar", "machine vision",
+        # robot makers and integrators (names, not tickers)
+        "Fanuc", "Yaskawa", "Keyence", "Kuka", "ABB robotics",
+        "Universal Robots", "cobot", "cobots", "Optimus", "Figure AI",
+        "Unitree", "Agility Robotics", "Boston Dynamics", "teleoperation",
+        # bearings & motion names (Japan/Europe - keyword is how we see them)
+        "THK", "Nabtesco", "Harmonic Drive Systems", "SKF", "Schaeffler",
+        "NSK", "Timken", "RBC Bearings", "Regal Rexnord", "Rexnord",
     ],
     "space": [
         "space launch", "rocket launch", "satellite", "satellites",
         "SpaceX", "Starlink", "orbital", "space station", "moon landing",
         "space economy",
+        "Starship", "Kuiper", "launch cadence", "reusable rocket",
+        # NOT bare "constellation" - it would catch Constellation Energy/Brands
+        "smallsat", "space force", "lunar lander", "satellite constellation",
     ],
     "quantum_computing": [
         "quantum computing", "quantum computer", "qubit", "qubits",
         "quantum chip", "quantum supremacy", "error correction",
+        "Willow chip", "Majorana", "quantum advantage", "post-quantum",
+        "quantum annealing", "trapped ion", "superconducting qubit",
     ],
     "weight_loss_glp1": [
         "GLP-1", "ozempic", "wegovy", "mounjaro", "zepbound",
@@ -273,6 +313,9 @@ THEME_KEYWORDS: dict[str, list[str]] = {
     "japan": [
         "nikkei", "yen", "bank of japan", "carry trade",
         "japanese stocks", "japan stocks",
+        "topix", "BOJ", "JGB", "yen intervention", "Japan Inc",
+        "Softbank", "Sony", "Toyota", "Mitsubishi Heavy",
+        "trading houses", "sogo shosha", "Berkshire Japan",
     ],
     "utilities_power": [
         "utilities", "power grid", "electricity demand", "power plant",
@@ -355,6 +398,67 @@ THEME_ETF_FALLBACKS: dict[str, list[str]] = {
     "weight_loss_glp1": ["LLY", "XLV"],
 }
 
+# ---------------------------------------------------------------------------
+# INTERNATIONAL COVERAGE (Europe / Japan) - retail posts refer to foreign
+# companies by NAME ("Rheinmetall", "Fanuc"), almost never by local ticker
+# ("RHM.DE", "6954.T"). So the counting side is handled by the company names
+# in THEME_KEYWORDS above; this map provides the PRICING side - the US-listed
+# ADR that proxies each name, so overlays and backtests have a price line.
+# The Bloomberg puller requests every symbol here. Only liquid, verified ADR
+# symbols - a wrong symbol silently pulls nothing.
+# ---------------------------------------------------------------------------
+INTERNATIONAL_ADRS: dict[str, str] = {
+    # robotics / bearings / motion control (Japan + Europe)
+    "Fanuc": "FANUY",
+    "Yaskawa": "YASKY",
+    "Keyence": "KYCCY",
+    "THK": "THKLY",
+    "Nabtesco": "NCTKY",
+    "SKF": "SKFRY",
+    # semiconductor equipment (Japan)
+    "Tokyo Electron": "TOELY",
+    "Advantest": "ATEYY",
+    "Lasertec": "LSRCY",
+    "Disco Corp": "DSCSY",
+    "SUMCO": "SUOPY",
+    # European defense
+    "Rheinmetall": "RNMBY",
+    "BAE Systems": "BAESY",
+    "Thales": "THLLY",
+    "Saab": "SAABY",
+    "Leonardo": "FINMY",
+    "Airbus": "EADSY",
+    # EV / batteries / Japan majors
+    "BYD": "BYDDY",
+    "Softbank": "SFTBY",
+}
+
+# ---------------------------------------------------------------------------
+# AUTO-PROMOTED THEMES - terms the emerging-term scanner flagged hard enough
+# to start TRACKING automatically (see helper/find_emerging_terms.py
+# --promote). Stored in a small committed csv (theme, keyword, first_seen)
+# so both machines see them. They count and score like any theme from the
+# moment they land, but they have NO ETF anchor - they stay out of the trade
+# signals until a human either adds them to THEME_ETFS or folds their
+# keywords into a proper hand-written theme above.
+# ---------------------------------------------------------------------------
+import os as _os
+
+AUTO_THEMES_PATH = _os.path.join(_os.path.dirname(_os.path.dirname(
+    _os.path.abspath(__file__))), "data", "reference", "auto_themes.csv")
+
+
+def load_auto_themes() -> dict[str, list[str]]:
+    """{theme_name: [keywords]} from the auto-promotions file, {} if none."""
+    if not _os.path.exists(AUTO_THEMES_PATH):
+        return {}
+    df = pd.read_csv(AUTO_THEMES_PATH)
+    out: dict[str, list[str]] = {}
+    for theme, kw in zip(df["theme"], df["keyword"]):
+        out.setdefault(str(theme), []).append(str(kw))
+    return out
+
+
 # Tokens are runs of letters/digits in the lowercased text, so "0DTE" and
 # "3nm" survive as single tokens. Anything with a space, hyphen or dot in
 # the keyword is treated as a phrase and substring-matched instead.
@@ -373,7 +477,9 @@ def _get_keyword_lookup():
         return _WORD_TO_THEMES, _PHRASE_TO_THEMES
     word_acc: dict[str, list[str]] = {}
     phrase_acc: dict[str, list[str]] = {}
-    for theme, keywords in THEME_KEYWORDS.items():
+    all_themes = dict(THEME_KEYWORDS)
+    all_themes.update(load_auto_themes())    # auto-promoted terms count too
+    for theme, keywords in all_themes.items():
         for kw in keywords:
             k = kw.lower()
             acc = phrase_acc if (" " in k or "-" in k or "." in k) else word_acc
@@ -535,6 +641,8 @@ THEME_TICKERS: dict[str, set[str]] = {
     },
     "robotics_automation": {
         "ISRG", "TER", "ROK", "SYM", "PATH", "TSLA", "BOTZ", "ROBO",
+        # bearings / motion-control supply chain (US-listed)
+        "TKR", "RRX", "RBC", "SERV", "RR",
     },
     "space": {
         "RKLB", "LUNR", "ASTS", "SPCE", "BA", "RDW", "ARKX",

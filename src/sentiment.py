@@ -204,6 +204,10 @@ def add_sentiment_cached(posts_df: pd.DataFrame, n_jobs: int = -1) -> pd.DataFra
     first full build, historical rebuilds cost a lookup, not a rescore."""
     import os
 
+    if "id" not in posts_df.columns:
+        # no ids -> nothing to key the store on; just score directly
+        return add_sentiment_fast(posts_df, n_jobs=n_jobs)
+
     path = _store_path()
     known = pd.DataFrame(columns=["id", "sentiment"])
     if os.path.exists(path):

@@ -106,6 +106,11 @@ def build_symbol_universe():
     for fallbacks in THEME_ETF_FALLBACKS.values():
         symbols.update(fallbacks)
 
+    # international names (Europe/Japan) priced through their US ADRs -
+    # the keyword themes count them, these symbols let overlays price them
+    from src.themes import INTERNATIONAL_ADRS
+    symbols.update(INTERNATIONAL_ADRS.values())
+
     # anything named in the signals
     sig_theme = _read("trade_signals.parquet")
     if sig_theme is not None and "etf" in sig_theme.columns:

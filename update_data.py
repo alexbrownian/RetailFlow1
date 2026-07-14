@@ -69,15 +69,17 @@ except Exception:
     pass
 
 # ============================ EDIT THIS =============================
-START_DATE = "2022-01-01"    # inclusive, 'YYYY-MM-DD'
-END_DATE = "2023-01-01"                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
+START_DATE = "2021-01-08"    # inclusive, 'YYYY-MM-DD'
+END_DATE = "2022-02-28"                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
 PRICE_TOP_N = 150            # how many top-mentioned tickers the price pull covers
 
 FETCH_LOOKBACK_DAYS = 7      # how far back each live fetch reaches (top posts of
                              # the last N days). Ran late? Set 14-30 to fill the
                              # gap - overlap NEVER duplicates (dedup on post id).
-FETCH_MAX_CREDITS = 60       # FetchLayer credit cap PER SOURCE per run (Reddit
+FETCH_MAX_CREDITS = 90       # FetchLayer credit cap PER SOURCE per run (Reddit
                              # and X each). Raise for deeper historical pulls.
+                             # (60 -> 90 when the six sector discovery queries
+                             # were added, so they don't starve the cashtag pass)
 
 BUILD_START_DATE = "2017-01-01"   # the range --full builds the aggregates over.
                              # The aggregates are WINDOW-INDEPENDENT: build them
@@ -574,9 +576,30 @@ def main():
             if code != 0:
                 log("ABORT: aggregate build failed", fh)
                 return 1
+            # rolling term frequencies (emerging-term detection on the
+            # internal machine); live folds keep it current between fulls
+            log("building rolling term counts (emerging-term detection)", fh)
+            run([py, "data_ingestion/scripts/build_term_counts.py"],
+                fh, dry, show=True)
     # restore the VIEW window for the overlays + price pull
     os.environ["PIPELINE_START_DATE"] = args.start
     os.environ["PIPELINE_END_DATE"] = args.end
+
+    # ---- 3b. EMERGING-TERM SCAN (LIVE runs only) ----
+    # After the fold, flag what retail is suddenly talking about that no
+    # theme covers - the early warning for the next 'bearings'. Live only:
+    # a backtest sees the past, and the past has no emerging terms. The scan
+    # reads the rolling text-free term counts, so it works on both machines.
+    # It only REPORTS - promoting a term into src/themes.py stays a human
+    # decision, so a noise spike can never silently pollute the themes.
+    if live:
+        log("scanning for emerging terms (nothing the themes cover yet)", fh)
+        # --promote: a term spiking hard enough is auto-added as a TRACKED
+        # theme (data/reference/auto_themes.csv) - it counts and scores from
+        # the next fold. It cannot enter the trade signals by itself: that
+        # requires a human to anchor it to an ETF in THEME_ETFS.
+        run([py, "helper/find_emerging_terms.py", "--top", "15", "--promote"],
+            fh, dry, show=True)
 
     # ---- 4. SNAPSHOT the signals (never revised) ----
     import shutil

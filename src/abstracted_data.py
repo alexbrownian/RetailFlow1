@@ -61,15 +61,18 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ABSTRACTED_DIR = os.path.join(ROOT, "ABSTRACTED_DATA")      # committed to git
 PROCESSED_DIR = os.path.join(ROOT, "data", "processed")     # private, gitignored
 
-# The five canonical filenames (used everywhere - one source of truth).
+# The six canonical filenames (used everywhere - one source of truth).
 TICKER_COUNTS = "daily_ticker_counts.parquet"
 TICKER_COUNTS_BY_SOURCE = "daily_ticker_counts_by_source.parquet"
 TICKER_SENT = "daily_ticker_sentiment.parquet"
 THEME_COUNTS = "daily_theme_counts.parquet"
 THEME_SENT = "daily_theme_sentiment.parquet"
+TERM_COUNTS = "daily_term_counts.parquet"    # rolling word/phrase frequencies
+                                             # for emerging-term detection -
+                                             # text-free like everything here
 
 FILES = [TICKER_COUNTS, TICKER_COUNTS_BY_SOURCE, TICKER_SENT,
-         THEME_COUNTS, THEME_SENT]
+         THEME_COUNTS, THEME_SENT, TERM_COUNTS]
 
 # For each file: how a merge combines it, and the columns that make a row unique.
 #   "counts"    -> mention_count adds up
@@ -80,6 +83,7 @@ MERGE_RULES = {
     TICKER_SENT:              ("sentiment", ["date", "ticker"]),
     THEME_COUNTS:             ("counts",    ["date", "theme"]),
     THEME_SENT:               ("sentiment", ["date", "theme"]),
+    TERM_COUNTS:              ("counts",    ["date", "term"]),
 }
 
 
@@ -209,6 +213,11 @@ def merge_into_abstracted(new_aggs, target_dir=ABSTRACTED_DIR, verbose=True):
                 merged = merge_sentiment(old, new, keys)
         else:
             merged = _normalise_date(new)
+        if name == TERM_COUNTS:
+            # the term file rolls - old days fall off so it stays small
+            # enough to commit (the spike test never looks that far back)
+            from src.terms import trim_to_retention
+            merged = trim_to_retention(merged)
         _safe_write(merged, path)
         summary[name] = len(merged)
         if verbose:
@@ -253,7 +262,7 @@ def load_universe():
 
 def aggregate_posts(posts_df, universe=None, cashtags_only=False):
     """posts_df: standard 9-column posts (needs date, title, selftext, source).
-    Returns {filename: aggregate_df} for the five files.
+    Returns {filename: aggregate_df} for the six files.
 
     Uses build_mentions + sentiment exactly like notebooks 02/06/07 do."""
     from src.build_mentions import build_daily_counts
@@ -285,10 +294,16 @@ def aggregate_posts(posts_df, universe=None, cashtags_only=False):
     theme_sent = build_daily_theme_sentiment(posts_scored)
     theme_counts = _build_daily_theme_counts(posts_df)
 
+    # ---- term counts: rolling word/phrase frequencies so emerging-term
+    # detection keeps working after the fold, on whichever machine folded
+    from src.terms import count_daily_terms
+    term_counts = count_daily_terms(posts_df)
+
     return {
         TICKER_COUNTS: counts,
         TICKER_COUNTS_BY_SOURCE: by_source[["date", "ticker", "source", "mention_count"]],
         TICKER_SENT: ticker_sent,
         THEME_COUNTS: theme_counts,
         THEME_SENT: theme_sent,
+        TERM_COUNTS: term_counts,
     }
