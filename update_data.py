@@ -69,8 +69,8 @@ except Exception:
     pass
 
 # ============================ EDIT THIS =============================
-START_DATE = "2023-01-08"    # inclusive, 'YYYY-MM-DD'
-END_DATE = "2024-02-28"                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
+START_DATE = "2018-01-08"    # inclusive, 'YYYY-MM-DD'
+END_DATE = "2019-02-28"                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
 PRICE_TOP_N = 150            # how many top-mentioned tickers the price pull covers
 
 FETCH_LOOKBACK_DAYS = 7      # how far back each live fetch reaches (top posts of
