@@ -69,7 +69,7 @@ except Exception:
     pass
 
 # ============================ EDIT THIS =============================
-START_DATE = "2020-01-08"    # inclusive, 'YYYY-MM-DD'
+START_DATE = "2023-01-08"    # inclusive, 'YYYY-MM-DD'
 END_DATE = "2025-02-28"                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
 PRICE_TOP_N = 150            # how many top-mentioned tickers the price pull covers
 
