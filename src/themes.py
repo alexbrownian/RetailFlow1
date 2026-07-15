@@ -386,6 +386,8 @@ THEME_ETFS: dict[str, str] = {
 # never empty just because the modern ETF is younger than the window.
 # The price puller requests ALL of these too, so the fallback always has data.
 THEME_ETF_FALLBACKS: dict[str, list[str]] = {
+    "semiconductors": ["SMH", "SOXX"],        # two liquid semi ETFs - both
+                                              # priced, selectable in nb 17
     "crypto": ["IBIT", "BITO", "GBTC"],       # spot ETF -> futures ETF -> trust
     "ai_megacap": ["MAGS", "QQQ"],            # MAGS young -> Nasdaq-100 proxy
     "ai": ["AIQ", "BOTZ", "QQQ"],
