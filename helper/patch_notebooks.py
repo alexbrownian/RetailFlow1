@@ -388,4 +388,36 @@ for nb, code in FLIP.items():
     save(nb, d)
     print(f"direction-flip evidence {'added' if appended else 'installed'}: {nb}")
 
-print("all patches processed (v4).")
+# ---- patch 7: report-card headline horizon 10d -> 20d -------------------------
+# The horizon analysis showed the signal's edge peaks around 3-4 weeks, so
+# the headline hit rate / avg return in the 15/16 report cards now uses the
+# 20-day forward return. The 5/10/20d bar chart keeps all three horizons.
+H20 = [("ret_10d", "ret_20d"),
+       ("10d hit rate", "20d hit rate"),
+       ("avg 10d return", "avg 20d return"),
+       ("10d forward return", "20d forward return"),
+       ("(10d horizon)", "(20d horizon)"),
+       ("10-day outcome", "20-day outcome")]
+for nb in ["15_overlay_trading_signals", "16_overlay_theme_trading_signals"]:
+    d = load(nb)
+    hits = 0
+    for c in d["cells"]:
+        if c["cell_type"] != "code":
+            continue
+        s = "".join(c["source"])
+        if "ret_10d" not in s and "10d hit rate" not in s:
+            continue
+        for old, new in H20:
+            if old in s:
+                s = s.replace(old, new)
+                hits += 1
+        c["source"] = s.splitlines(keepends=True)
+        c["outputs"] = []
+        c["execution_count"] = None
+    if hits:
+        save(nb, d)
+        print(f"report-card horizon 10d -> 20d ({hits} spots): {nb}")
+    else:
+        print(f"report-card horizon already 20d: {nb}")
+
+print("all patches processed (v5).")
