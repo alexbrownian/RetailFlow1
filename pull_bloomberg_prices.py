@@ -124,8 +124,20 @@ def build_symbol_universe():
     return sorted(symbols)
 
 
+# Non-US lines from the firm-approved list. Keys are how the symbol is
+# stored in prices.parquet / THEME_ETFS; values are the exact Bloomberg
+# security strings (exchange code included). Extend as more foreign lines
+# get approved.
+FOREIGN_SECURITIES = {
+    "1622 JT": "1622 JT Equity",       # NF Topix-17 Auto & Transport Equip
+}
+
+
 def to_bloomberg(symbol):
-    """Plain ticker/ETF -> Bloomberg security string. US-listed equities/ETFs."""
+    """Plain ticker/ETF -> Bloomberg security string. US-listed by default;
+    approved non-US lines resolve through FOREIGN_SECURITIES."""
+    if symbol in FOREIGN_SECURITIES:
+        return FOREIGN_SECURITIES[symbol]
     return f"{symbol} US Equity"
 
 
@@ -178,9 +190,12 @@ def _parse_message(msg):
     if not msg.hasElement("securityData"):
         return out
     sec_data = msg.getElement("securityData")
-    # Bloomberg returns 'IBM US Equity'; strip the suffix to the plain symbol.
+    # Bloomberg returns 'IBM US Equity'; strip the suffix back to the plain
+    # symbol. Foreign lines map back through FOREIGN_SECURITIES so the
+    # stored symbol matches THEME_ETFS exactly (e.g. '1622 JT').
     security = sec_data.getElementAsString("security")
-    symbol = security.replace(" US Equity", "").strip()
+    _back = {v: k for k, v in FOREIGN_SECURITIES.items()}
+    symbol = _back.get(security, security.replace(" US Equity", "").strip())
 
     if sec_data.hasElement("securityError"):
         print(f"    (no data for {security})")

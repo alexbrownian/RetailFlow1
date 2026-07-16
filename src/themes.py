@@ -337,46 +337,52 @@ THEME_KEYWORDS: dict[str, list[str]] = {
 # One liquid primary per theme (mostly ETFs). short_squeeze / meme_stocks
 # have no clean ETF; GME is the honest single-stock proxy.
 # ---------------------------------------------------------------------------
+# RESTRICTED TO THE FIRM-APPROVED TRADEABLE LIST (see the Tickers sheet):
+# every anchor below is an instrument the desk can actually trade. Themes
+# with no approved instrument (crypto, cannabis, small_caps, japan) are
+# still TRACKED - keywords, counts, sentiment, conviction all work - but
+# carry no anchor, so they are excluded from trade signals automatically.
 THEME_ETFS: dict[str, str] = {
     "semiconductors": "SMH",
-    "memory": "SMH",            # no pure memory ETF; MU dominates SMH's memory exposure
-    "ai": "AIQ",
-    "datacenters": "DTCR",
-    "ai_megacap": "MAGS",
-    "crypto": "IBIT",           # spot bitcoin ETF (BITO pre-2024 windows)
-    "gold_metals": "GLD",       # miners: GDX
+    "memory": "SMH",            # no pure memory ETF on the approved list
+    "ai": "IYW",                # US tech; AIQ is not tradeable here
+    "datacenters": "VPN",       # Global X data center REITs - on the list
+    "ai_megacap": "QQQ",
+    "gold_metals": "GLD",       # miners GDX / silver SLV,SIL / copper COPX in fallbacks
     "energy": "XLE",
-    "ev_clean_energy": "ICLN",
+    "ev_clean_energy": "LIT",   # lithium & battery - on the list
     "uranium_nuclear": "URA",
     "defense_aerospace": "ITA",
-    "europe_defense": "EUAD",
-    "short_squeeze": "GME",     # single-stock proxy, not an ETF
-    "meme_stocks": "GME",       # single-stock proxy, not an ETF
+    "europe_defense": "ITA",    # no European defense line approved; US proxy
+    "short_squeeze": "ARKK",    # speculative-growth basket; GME not tradeable
+    "meme_stocks": "ARKK",      # same proxy - the retail-favourite basket
     "biotech_pharma": "XBI",
     "rates_bonds": "TLT",
-    "real_estate": "VNQ",
+    "real_estate": "XLRE",      # VNQ not approved; sector SPDR is
     "cloud_saas": "IGV",
     "china_geopolitics": "KWEB",
     "financials": "XLF",
     "consumer_retail": "XLY",
     "cybersecurity": "CIBR",
-    "fintech_payments": "IPAY",
-    "gaming_esports": "ESPO",
+    "fintech_payments": "XLF",  # IPAY not approved; financials proxy
+    "gaming_esports": "SOCL",   # ESPO not approved; social/interactive proxy
     "travel_airlines": "JETS",
     "housing_builders": "ITB",
-    "robotics_automation": "BOTZ",
-    "space": "ARKX",            # young (2021); UFO/ITA fallbacks below
-    "quantum_computing": "QTUM",
-    "weight_loss_glp1": "LLY",  # single-stock proxy (no clean GLP-1 ETF with history)
-    "cannabis": "MSOS",         # young (2021)
-    "solar": "TAN",
-    "agriculture_food": "MOO",
+    "robotics_automation": "XLI",  # BOTZ/ROBO not approved; industrials proxy
+    "space": "ITA",             # ARKX not approved; aerospace & defense proxy
+    "quantum_computing": "IYW",
+    "weight_loss_glp1": "XLV",  # LLY single stock not tradeable; healthcare
+    "solar": "LIT",             # TAN not approved; closest clean-energy line
+    "agriculture_food": "XLP",  # MOO not approved; staples/food proxy
     "shipping_logistics": "IYT",
-    "small_caps": "IWM",
-    "japan": "EWJ",
     "utilities_power": "XLU",
     "media_streaming": "XLC",
-    "infrastructure": "PAVE",
+    "infrastructure": "XLI",    # PAVE not approved; industrials proxy
+    "japan": "1622 JT",         # NF Topix-17 Auto & Transport Equip - the
+                                # approved Japan line (narrow: autos/machinery,
+                                # not the broad Nikkei - read charts accordingly)
+    # NO approved instrument -> tracked but untradeable, no anchor:
+    #   crypto, cannabis, small_caps
 }
 
 # Some primary anchors only started trading recently (IBIT Jan-2024,
@@ -385,19 +391,36 @@ THEME_ETFS: dict[str, str] = {
 # symbol with price data in the window is found - so a thematic chart is
 # never empty just because the modern ETF is younger than the window.
 # The price puller requests ALL of these too, so the fallback always has data.
+# Fallback chains - RESTRICTED to the firm-approved list too. Order: primary
+# anchor first, then approved alternates (nb 17 can also pick any directly).
 THEME_ETF_FALLBACKS: dict[str, list[str]] = {
-    "semiconductors": ["SMH", "SOXX"],        # two liquid semi ETFs - both
-                                              # priced, selectable in nb 17
-    "crypto": ["IBIT", "BITO", "GBTC"],       # spot ETF -> futures ETF -> trust
-    "ai_megacap": ["MAGS", "QQQ"],            # MAGS young -> Nasdaq-100 proxy
-    "ai": ["AIQ", "BOTZ", "QQQ"],
-    "datacenters": ["DTCR", "SRVR", "EQIX"],  # ETF renamed/young -> REIT proxy
-    "europe_defense": ["EUAD", "ITA"],        # EUAD young -> US defense proxy
-    "uranium_nuclear": ["URA", "CCJ"],
-    "memory": ["SMH", "MU"],
-    "space": ["ARKX", "ITA"],           # ARKX starts 2021-03
-    "cannabis": ["MSOS", "TLRY"],       # MSOS starts 2020-09
-    "weight_loss_glp1": ["LLY", "XLV"],
+    "semiconductors": ["SMH", "SOXX"],
+    "memory": ["SMH", "SOXX"],
+    "ai": ["IYW", "QQQ", "XLK"],
+    "datacenters": ["VPN", "IYW"],
+    "ai_megacap": ["QQQ", "XLK"],
+    "gold_metals": ["GLD", "GDX", "SLV", "SIL", "COPX"],
+    "energy": ["XLE", "XOP", "OIH", "USO", "UNG"],
+    "ev_clean_energy": ["LIT", "XLY"],
+    "defense_aerospace": ["ITA", "XLI"],
+    "europe_defense": ["ITA"],
+    "biotech_pharma": ["XBI", "XLV"],
+    "rates_bonds": ["TLT", "LQD", "HYG", "TIP"],
+    "real_estate": ["XLRE", "ITB"],
+    "cloud_saas": ["IGV", "IYW"],
+    "china_geopolitics": ["KWEB", "FXI", "ASHR", "CQQQ"],
+    "financials": ["XLF", "KBE"],
+    "fintech_payments": ["XLF", "IGV"],
+    "gaming_esports": ["SOCL", "IYW"],
+    "housing_builders": ["ITB", "XLB"],
+    "robotics_automation": ["XLI", "IYW", "ARKK"],
+    "space": ["ITA"],
+    "quantum_computing": ["IYW", "QQQ"],
+    "weight_loss_glp1": ["XLV", "XBI"],
+    "solar": ["LIT", "XLU"],
+    "agriculture_food": ["XLP", "XLB"],
+    "media_streaming": ["XLC", "SOCL"],
+    "infrastructure": ["XLI", "XLB"],
 }
 
 # ---------------------------------------------------------------------------

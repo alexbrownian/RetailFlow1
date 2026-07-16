@@ -420,4 +420,236 @@ for nb in ["15_overlay_trading_signals", "16_overlay_theme_trading_signals"]:
     else:
         print(f"report-card horizon already 20d: {nb}")
 
-print("all patches processed (v5).")
+# ---- patch 8: signal triangles must sit ON the plotted price line -------------
+# Two causes of floating triangles: (a) the marker height came from the
+# DAILY price series while the line can be weekly-resampled (px_line), and
+# (b) a signal newer than the last price pull was asof'd to the last known
+# price - a triangle hovering past the end of the line. Fix: take the height
+# from the plotted line itself, and skip (with a note) signals outside the
+# price data span.
+TRI_OLD = "        price_at = px_daily.asof(mid)"
+TRI_NEW = """        if px_line.empty or not (px_line.index.min() <= mid <= px_line.index.max()):
+            print(f'  note: signal {mid.date()} is outside the price data span - '
+                  'rerun pull_bloomberg_prices.py to see it on the chart')
+            continue
+        price_at = px_line.asof(mid)"""
+for nb in ["15_overlay_trading_signals", "16_overlay_theme_trading_signals"]:
+    d = load(nb)
+    hits = 0
+    for c in d["cells"]:
+        if c["cell_type"] != "code":
+            continue
+        s = "".join(c["source"])
+        if TRI_OLD in s:
+            c["source"] = s.replace(TRI_OLD, TRI_NEW).splitlines(keepends=True)
+            c["outputs"] = []
+            c["execution_count"] = None
+            hits += 1
+    if hits:
+        save(nb, d)
+        print(f"triangle alignment fixed: {nb}")
+    else:
+        print(f"triangle alignment already fixed: {nb}")
+
+
+# ---- patch 9: notebook 16 - the SIGNAL COMPONENTS panel ------------------------
+# Below the signal charts: for each plotted theme, price + signal markers on
+# top, and underneath the exact ingredients notebook 10 used to decide -
+# attention z, conviction z (trailing 84d baselines, live-parity) and the
+# 5-day sentiment change - so every triangle can be traced to what fired it.
+MD_COMP = """## Signal components: WHAT fired each BUY/SELL
+
+For each theme above: price with the signal triangles (top) and the exact
+ingredients notebook 10 weighed (bottom) - attention z (crowd size),
+conviction z (crowd size x bullish lean), both against TRAILING 84-day
+baselines exactly as the signal generator computes them, plus the 5-day
+sentiment change on the right axis. Dashed lines mark +/-K, the trigger
+threshold. Vertical bands mark the signal dates - trace any triangle down
+to see which ingredient(s) crossed."""
+
+CODE_COMP = """# ==== SIGNAL COMPONENTS over time (notebook 10's exact ingredients) ====
+import numpy as np
+from src.themes import build_ticker_to_themes
+
+ROLL_C, BASE_C, MIND_C = 7, 84, 28          # same as notebook 10
+K_GUIDE = float(os.environ.get('SIG_K', 2.0))
+
+cnt_c = pd.read_parquet(os.path.join(P, 'daily_ticker_counts.parquet'))
+cnt_c['date'] = pd.to_datetime(cnt_c['date']); cnt_c = clip_dates(cnt_c, 'date')
+lookup_c = build_ticker_to_themes()
+cnt_c['themes'] = cnt_c['ticker'].map(lambda t: lookup_c.get(t, []))
+td_c = (cnt_c.explode('themes').dropna(subset=['themes'])
+        .groupby(['date', 'themes'])['mention_count'].sum().reset_index())
+days_c = pd.date_range(cnt_c['date'].min(), cnt_c['date'].max(), freq='D')
+wide_c = (td_c.pivot_table(index='date', columns='themes', values='mention_count')
+          .reindex(days_c).fillna(0))
+
+def trailing_z_c(frame):
+    r = frame.rolling(ROLL_C, min_periods=1).sum()
+    mu = r.rolling(BASE_C, min_periods=MIND_C).mean()
+    sd = r.rolling(BASE_C, min_periods=MIND_C).std().replace(0, np.nan)
+    return (r - mu) / sd
+
+att_c = trailing_z_c(wide_c)
+
+ts_c = pd.read_parquet(os.path.join(P, 'daily_theme_sentiment.parquet'))
+ts_c['date'] = pd.to_datetime(ts_c['date']); ts_c = clip_dates(ts_c, 'date')
+wn_c = ts_c.pivot_table(index='date', columns='theme', values='n_posts').reindex(days_c).fillna(0)
+wb_c = ts_c.pivot_table(index='date', columns='theme', values='net_bullish').reindex(days_c)
+pressure_c = (wn_c * wb_c).fillna(0)
+conv_c = trailing_z_c(pressure_c)
+share_c = (pressure_c.rolling(ROLL_C, min_periods=1).sum()
+           / wn_c.rolling(ROLL_C, min_periods=1).sum().replace(0, np.nan))
+sent_c = share_c.diff(5)
+
+for theme_name in themes_ranked:
+    if theme_name not in conv_c.columns:
+        print(f'{theme_name}: no sentiment series in this window - skipped')
+        continue
+    s = sig_all[sig_all['theme'] == theme_name]
+    symbol = s['symbol'].iloc[0]
+    px = price_series(prices, symbol)
+    if px.empty:
+        continue
+    fig, (axp, axz) = plt.subplots(2, 1, figsize=(13, 8), sharex=True,
+                                   gridspec_kw={'height_ratios': [2, 1.6]})
+    axp.plot(px.index, px.values, color='black', linewidth=1.3, label=f'{symbol} price')
+    for _, row in s.iterrows():
+        d0 = row['action_date']
+        if not (px.index.min() <= d0 <= px.index.max()):
+            continue
+        color = 'tab:green' if row['action'] == 'BUY' else 'tab:red'
+        mk = '^' if row['action'] == 'BUY' else 'v'
+        axp.scatter([d0], [px.asof(d0)], marker=mk, s=110, color=color,
+                    edgecolors='black', linewidths=0.8, zorder=5)
+        axz.axvline(d0, color=color, alpha=0.25, linewidth=1.2)
+    axp.set_ylabel('price (USD)')
+    axp.set_title(f'{theme_name}: price + signals (top) and the ingredients '
+                  'that fired them (bottom)')
+    axp.grid(True, alpha=0.3); axp.legend(loc='upper left', fontsize=8)
+
+    if theme_name in att_c.columns:
+        axz.plot(att_c.index, att_c[theme_name], color='tab:orange',
+                 linewidth=1.2, label='attention z')
+    axz.plot(conv_c.index, conv_c[theme_name], color='tab:purple',
+             linewidth=1.2, label='conviction z')
+    axz2 = axz.twinx()
+    axz2.plot(sent_c.index, sent_c[theme_name], color='tab:blue',
+              linewidth=1.0, alpha=0.6, label='sentiment 5d change')
+    axz2.set_ylabel('sent 5d chg', color='tab:blue')
+    axz2.tick_params(axis='y', labelcolor='tab:blue')
+    axz.axhline(K_GUIDE, color='green', linestyle='--', linewidth=0.9)
+    axz.axhline(-K_GUIDE, color='red', linestyle='--', linewidth=0.9)
+    axz.axhline(0, color='black', linewidth=0.6)
+    axz.set_ylabel('z-score (trailing)')
+    h1, l1 = axz.get_legend_handles_labels(); h2, l2 = axz2.get_legend_handles_labels()
+    axz.legend(h1 + h2, l1 + l2, loc='upper left', fontsize=8)
+    axz.grid(True, alpha=0.3)
+    set_date_ticks(axz, X_TICKS)
+    fig.tight_layout(); plt.show()"""
+
+d = load("16_overlay_theme_trading_signals")
+if any("SIGNAL COMPONENTS" in "".join(c["source"]) for c in d["cells"]):
+    print("signal-components panel already present: 16_overlay_theme_trading_signals")
+else:
+    d["cells"].append(cell("markdown", MD_COMP))
+    d["cells"].append(cell("code", CODE_COMP))
+    save("16_overlay_theme_trading_signals", d)
+    print("signal-components panel added: 16_overlay_theme_trading_signals")
+
+# ---- patch 10: DELIBERATE signals - fewer, higher-confidence defaults ---------
+# K 2.0 -> 2.5 (only the top ~1% most abnormal days trigger, not ~2%),
+# SELL floor 3 -> 4 of 5 checks (sells were the weak side - they now need
+# the same weight of evidence as buys), cooldown 14 -> 21 days (one episode,
+# one trade). Still env-tunable, so the tuner can revisit these later.
+STRICT = [("os.environ.get('SIG_K', 2.0)", "os.environ.get('SIG_K', 2.5)"),
+          ("os.environ.get('SIG_MIN_SCORE_SELL', 3)",
+           "os.environ.get('SIG_MIN_SCORE_SELL', 4)"),
+          ("os.environ.get('SIG_COOLDOWN', 14)",
+           "os.environ.get('SIG_COOLDOWN', 21)")]
+d = load("10_trading_signals")
+hits = 0
+for c in d["cells"]:
+    if c["cell_type"] != "code":
+        continue
+    s = "".join(c["source"])
+    changed = False
+    for old_v, new_v in STRICT:
+        if old_v in s:
+            s = s.replace(old_v, new_v, 1)
+            changed = True
+            hits += 1
+    if changed:
+        c["source"] = s.splitlines(keepends=True)
+        c["outputs"] = []
+        c["execution_count"] = None
+if hits:
+    save("10_trading_signals", d)
+    print(f"deliberate-signal defaults set ({hits} thresholds): 10_trading_signals")
+else:
+    print("deliberate-signal defaults already in place: 10_trading_signals")
+
+# ---- patch 11: notebook 16 - OPPORTUNITY GAP (strong but untradeable) ---------
+# Emerging/auto themes and unanchored hand themes are deliberately kept OUT
+# of the tradeable book. This plot is the bridge: it ranks recent conviction
+# for EVERY tracked theme, colours tradeable vs tracked-only differently,
+# and lists the tracked-only themes scoring above the tradeable median -
+# the shortlist for 'should I get an instrument approved for this?'.
+MD_GAP = """## Opportunity gap: strong themes you CANNOT trade yet
+
+Grey bars = themes with an approved instrument (the tradeable book).
+Orange bars = tracked-only themes: no approved instrument (crypto,
+cannabis, small caps) and auto-promoted emerging themes. An orange bar to
+the RIGHT of the dashed line (the tradeable median) is retail conviction
+the desk currently has no way to express - the shortlist for requesting a
+new instrument on the approved list."""
+
+CODE_GAP = """# ==== OPPORTUNITY GAP: conviction of tradeable vs tracked-only themes ====
+GAP_DAYS = 30     # 'recent' = average conviction over the last N days
+
+conv_g = pd.read_parquet(os.path.join(P, 'daily_theme_conviction.parquet'))
+conv_g['date'] = pd.to_datetime(conv_g['date'])
+conv_g = clip_dates(conv_g, 'date')
+if len(conv_g):
+    recent_g = conv_g[conv_g['date'] >= conv_g['date'].max()
+                      - pd.Timedelta(days=GAP_DAYS)]
+    score_g = recent_g.groupby('theme')['conviction_z'].mean().sort_values()
+
+    from src.themes import THEME_ETFS as _ANCHORS
+    tradeable_g = score_g.index.isin(_ANCHORS)
+    med_g = score_g[tradeable_g].median() if tradeable_g.any() else 0.0
+
+    fig, ax = plt.subplots(figsize=(11, max(5, 0.28 * len(score_g))))
+    ax.barh(range(len(score_g)), score_g.values,
+            color=['tab:gray' if t else 'tab:orange' for t in tradeable_g])
+    ax.set_yticks(range(len(score_g)))
+    ax.set_yticklabels(score_g.index, fontsize=8)
+    ax.axvline(med_g, color='black', linestyle='--', linewidth=1,
+               label=f'tradeable median ({med_g:+.2f})')
+    ax.axvline(0, color='black', linewidth=0.6)
+    ax.set_xlabel(f'avg conviction z, last {GAP_DAYS} days')
+    ax.set_title('grey = tradeable book | orange = tracked only (no instrument)')
+    ax.legend(); ax.grid(True, alpha=0.3, axis='x')
+    fig.tight_layout(); plt.show()
+
+    gap_list = score_g[(~tradeable_g) & (score_g > med_g)]
+    if len(gap_list):
+        print('tracked-only themes ABOVE the tradeable median - consider '
+              'requesting an instrument:')
+        for t, v in gap_list.sort_values(ascending=False).items():
+            print(f'  {t:<28} avg conviction z {v:+.2f}')
+    else:
+        print('no tracked-only theme currently out-scores the tradeable book.')
+else:
+    print('no conviction data in this window')"""
+
+d = load("16_overlay_theme_trading_signals")
+if any("OPPORTUNITY GAP" in "".join(c["source"]) for c in d["cells"]):
+    print("opportunity-gap plot already present: 16_overlay_theme_trading_signals")
+else:
+    d["cells"].append(cell("markdown", MD_GAP))
+    d["cells"].append(cell("code", CODE_GAP))
+    save("16_overlay_theme_trading_signals", d)
+    print("opportunity-gap plot added: 16_overlay_theme_trading_signals")
+
+print("all patches processed (v8).")
