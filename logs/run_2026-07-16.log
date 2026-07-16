@@ -242,3 +242,11 @@
 [10:56:28]   price overlays: rendered (11-16)
 [10:56:28]   safety check  : PASS
 [10:56:28] ============================================================
+[16:46:17] ============================================================
+[16:46:17] UPDATE DATA
+[16:46:17]   window : 2026-06-08 -> LIVE (newest)
+[16:46:17]   machine: EXTERNAL (raw store) (posts.parquet present)
+[16:46:17]   path   : FULL rebuild over 2017-01-01 -> today
+[16:46:17]   fetch  : yes
+[16:46:17] ============================================================
+[16:46:20] RUN  C:\Python312\python.exe api_calls/fetch_all.py --no-merge --lookback-days 7 --max-credits 90

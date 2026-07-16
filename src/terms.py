@@ -58,7 +58,23 @@ FUNCTION_WORDS = {
     "doesn", "isn", "aren", "wasn", "weren", "hasn", "haven", "hadn",
     "wouldn", "couldn", "shouldn", "won", "don", "didn", "ain", "lot",
 }
-DROP_ALWAYS = EXTRA_STOPWORDS | FUNCTION_WORDS
+# spam vocabulary - scam/promo posts ("join my whatsapp group for signals")
+# spike hard and would otherwise become auto-themes. Platform names and
+# promo words are never a tradeable theme, so they are dropped outright.
+SPAM_WORDS = {
+    "whatsapp", "telegram", "discord", "instagram", "tiktok", "youtube",
+    "facebook", "snapchat", "linkedin", "twitter", "gmail", "email",
+    "inbox", "website", "webinar", "zoom", "click", "link", "links",
+    "subscribe", "follow", "followers", "join", "joined", "group",
+    "groups", "channel", "channels", "community", "admin", "moderator",
+    "giveaway", "promo", "promotion", "referral", "bonus",
+    "signup", "register", "registration", "mentor", "mentorship", "guru",
+    "coach", "coaching", "masterclass", "course", "courses", "ebook",
+    "vip", "casino", "jackpot", "lottery", "winner",
+    "congratulations", "guaranteed", "risk-free", "dm", "dms",
+}
+
+DROP_ALWAYS = EXTRA_STOPWORDS | FUNCTION_WORDS | SPAM_WORDS
 
 MIN_PER_DAY_WORD = 3    # a word must appear in >= this many posts that day
 MIN_PER_DAY_PAIR = 5    # pairs are noisier and more numerous - higher bar

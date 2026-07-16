@@ -548,14 +548,18 @@ for theme_name in themes_ranked:
     set_date_ticks(axz, X_TICKS)
     fig.tight_layout(); plt.show()"""
 
+# REVERSED (user request): the components panel is REMOVED if present.
 d = load("16_overlay_theme_trading_signals")
-if any("SIGNAL COMPONENTS" in "".join(c["source"]) for c in d["cells"]):
-    print("signal-components panel already present: 16_overlay_theme_trading_signals")
-else:
-    d["cells"].append(cell("markdown", MD_COMP))
-    d["cells"].append(cell("code", CODE_COMP))
+before_n = len(d["cells"])
+d["cells"] = [c for c in d["cells"]
+              if "SIGNAL COMPONENTS" not in "".join(c["source"])
+              and "Signal components" not in "".join(c["source"])]
+if len(d["cells"]) != before_n:
     save("16_overlay_theme_trading_signals", d)
-    print("signal-components panel added: 16_overlay_theme_trading_signals")
+    print(f"signal-components panel removed ({before_n - len(d['cells'])} cells): "
+          "16_overlay_theme_trading_signals")
+else:
+    print("signal-components panel not present (nothing to remove)")
 
 # ---- patch 10: DELIBERATE signals - fewer, higher-confidence defaults ---------
 # K 2.0 -> 2.5 (only the top ~1% most abnormal days trigger, not ~2%),
@@ -652,4 +656,72 @@ else:
     save("16_overlay_theme_trading_signals", d)
     print("opportunity-gap plot added: 16_overlay_theme_trading_signals")
 
-print("all patches processed (v8).")
+# ---- patch 12: notebook 16 ranks themes by TRADE CERTAINTY, not volume --------
+# 'Top' used to mean most-signalled. Now it means the best trade to make:
+#   certainty = score (breadth: how many of the 5 checks agreed)
+#             + |conviction z| capped at 3 (strength: how abnormal the crowd)
+#             + recency bonus fading over 90 days (a live edge beats an old one)
+# Each theme is ranked by its BEST signal, and the ranking is printed with
+# the reasons so the order is never a mystery.
+RANK_OLD = """themes_ranked = sig_all['theme'].value_counts().head(HOW_MANY).index.tolist()
+print('auto themes (most signalled):', themes_ranked)"""
+RANK_NEW = """# rank themes by CERTAINTY - the best trade first, not the loudest theme
+cert = sig_all.copy()
+cert['strength'] = cert['conv_z'].abs().clip(upper=3)
+_age = (cert['action_date'].max() - cert['action_date']).dt.days
+cert['recency'] = (1 - _age / 90).clip(lower=0)
+cert['certainty'] = cert['score'] + cert['strength'] + cert['recency']
+theme_cert = cert.groupby('theme')['certainty'].max().sort_values(ascending=False)
+themes_ranked = theme_cert.head(HOW_MANY).index.tolist()
+print('themes ranked by trade CERTAINTY (score + |conv z| + recency):')
+for t in themes_ranked:
+    b = cert[cert['theme'] == t].sort_values('certainty').iloc[-1]
+    print(f"  {t:<26} certainty {b['certainty']:.2f} | best: {b['action']} "
+          f"score {b['score']}/5, conv z {b['conv_z']:+.2f}, {b['action_date'].date()}")"""
+d = load("16_overlay_theme_trading_signals")
+hits = 0
+for c in d["cells"]:
+    if c["cell_type"] != "code":
+        continue
+    s = "".join(c["source"])
+    if RANK_OLD in s:
+        c["source"] = s.replace(RANK_OLD, RANK_NEW).splitlines(keepends=True)
+        c["outputs"] = []
+        c["execution_count"] = None
+        hits += 1
+if hits:
+    save("16_overlay_theme_trading_signals", d)
+    print("certainty ranking installed: 16_overlay_theme_trading_signals")
+else:
+    print("certainty ranking already installed (or pattern moved): "
+          "16_overlay_theme_trading_signals")
+
+# ---- patch 13: triangles SNAP to a vertex of the drawn line -------------------
+# asof() returns the last value AT OR BEFORE the marker date, but when the
+# line is resampled (FREQ='W') matplotlib interpolates BETWEEN weekly points,
+# so an asof height can sit off the visible line. Snapping the marker to the
+# NEAREST plotted point makes 'off the line' geometrically impossible (the
+# marker x moves by at most half a plot period).
+SNAP_OLD = "        price_at = px_line.asof(mid)"
+SNAP_NEW = """        _i = px_line.index.get_indexer([mid], method='nearest')[0]
+        mid = px_line.index[_i]           # snap to a vertex of the drawn line
+        price_at = px_line.iloc[_i]"""
+for nb in ["15_overlay_trading_signals", "16_overlay_theme_trading_signals"]:
+    d = load(nb)
+    hits = 0
+    for c in d["cells"]:
+        if c["cell_type"] != "code":
+            continue
+        s = "".join(c["source"])
+        if SNAP_OLD in s:
+            c["source"] = s.replace(SNAP_OLD, SNAP_NEW).splitlines(keepends=True)
+            c["outputs"] = []
+            c["execution_count"] = None
+            hits += 1
+    if hits:
+        save(nb, d)
+        print(f"triangle snap-to-line installed: {nb}")
+    else:
+        print(f"triangle snap-to-line already installed: {nb}")
+
+print("all patches processed (v10).")
