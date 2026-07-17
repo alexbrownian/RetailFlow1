@@ -69,8 +69,8 @@ except Exception:
     pass
 
 # ============================ EDIT THIS =============================
-START_DATE = "2026-06-08"    # inclusive, 'YYYY-MM-DD'
-END_DATE = ""                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
+START_DATE = "2020-06-08"    # inclusive, 'YYYY-MM-DD'
+END_DATE = "2023-01-08"                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
 PRICE_TOP_N = 150            # how many top-mentioned tickers the price pull covers
 
 FETCH_LOOKBACK_DAYS = 7      # how far back each live fetch reaches (top posts of
@@ -96,6 +96,16 @@ BUILD_START_DATE = "2017-01-01"   # the range --full builds the aggregates over.
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(ROOT, "logs")
+
+# Silence ONE known-harmless Windows noise line: on Python 3.12 zmq warns
+# that the default (Proactor) event loop lacks add_reader and that it
+# worked around it with a selector thread. Everything functions - the
+# warning just spams every notebook run. This filter matches that message
+# ONLY (all other warnings still show) and is inherited by the nbconvert
+# child processes through the environment.
+os.environ["PYTHONWARNINGS"] = ",".join(
+    p for p in [os.environ.get("PYTHONWARNINGS", ""),
+                "ignore:Proactor event loop"] if p)
 SNAP_DIR = os.path.join(ROOT, "data", "processed", "signal_snapshots")
 
 # The FULL chain: notebook 01 (slice + word-ticker screening), then
@@ -543,6 +553,36 @@ def main():
         return False
 
     if full_chain:
+        # GUARD: months can be folded into ABSTRACTED_DATA on the OTHER
+        # machine (e.g. the 2026 gap-fill lives only on the work laptop).
+        # A --full here rebuilds from THIS machine's posts.parquet - if the
+        # aggregates run ahead of the local master, the rebuild would
+        # silently REVERT those months. Abort and explain instead.
+        posts_p = os.path.join(ROOT, "data", "processed", "posts.parquet")
+        agg_p = os.path.join(ROOT, "ABSTRACTED_DATA", "daily_theme_counts.parquet")
+        if (os.path.exists(posts_p) and os.path.exists(agg_p)
+                and not os.environ.get("FORCE_FULL")):
+            import pyarrow.parquet as _pq
+            import pandas as _pd
+            _pf = _pq.ParquetFile(posts_p)
+            posts_max = None
+            for _b in _pf.iter_batches(columns=["date"], batch_size=500_000):
+                _mx = max(_b.column("date").to_pylist())
+                posts_max = _mx if posts_max is None or _mx > posts_max else posts_max
+            agg_max = _pd.to_datetime(
+                _pd.read_parquet(agg_p, columns=["date"])["date"]).max()
+            if agg_max - _pd.Timestamp(str(posts_max)[:10]) > _pd.Timedelta(days=14):
+                log("ABORT: the committed aggregates reach "
+                    f"{agg_max.date()} but this machine's posts.parquet only "
+                    f"reaches {str(posts_max)[:10]}.", fh)
+                log("A --full rebuild here would REVERT the months folded on "
+                    "the other machine (the 2026 gap-fill).", fh)
+                log("Fix: run helper/fetch_gap_months.py on THIS machine "
+                    "first (it appends the missing months to the master), "
+                    "then rerun --full.", fh)
+                log("Override (data loss!): set FORCE_FULL=1 in the "
+                    "environment.", fh)
+                return 1
         notebooks = FULL_CHAIN_NOTEBOOKS
         os.environ["PIPELINE_START_DATE"] = BUILD_START_DATE
         os.environ["PIPELINE_END_DATE"] = ""

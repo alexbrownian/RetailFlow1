@@ -216,10 +216,46 @@ def _parse_message(msg):
 # ---------------------------------------------------------------------------
 # 3. main
 # ---------------------------------------------------------------------------
+def plan_requests(symbols, start, end, existing):
+    """INCREMENTAL planning: figure out, per symbol, which part of the
+    requested window is NOT already in prices.parquet, and group symbols
+    that need the same span so they batch into shared requests.
+
+    Returns {(span_start, span_end): [symbols]}. Symbols whose window is
+    already fully covered appear in no bucket - nothing is re-downloaded.
+    A 3-day tolerance absorbs weekends/holidays at the span edges."""
+    start_ts = pd.Timestamp(start)
+    end_ts = pd.Timestamp(end)
+    tol = pd.Timedelta(days=3)
+
+    coverage = {}
+    if existing is not None and len(existing):
+        agg = existing.groupby("symbol")["date"].agg(["min", "max"])
+        coverage = {s: (r["min"], r["max"]) for s, r in agg.iterrows()}
+
+    buckets = {}
+    for sym in symbols:
+        if sym not in coverage:
+            spans = [(start_ts, end_ts)]                 # brand new symbol
+        else:
+            lo, hi = coverage[sym]
+            spans = []
+            if start_ts < lo - tol:
+                spans.append((start_ts, lo - pd.Timedelta(days=1)))
+            if end_ts > hi + tol:
+                spans.append((hi + pd.Timedelta(days=1), end_ts))
+        for a, b in spans:
+            key = (a.strftime("%Y%m%d"), b.strftime("%Y%m%d"))
+            buckets.setdefault(key, []).append(sym)
+    return buckets
+
+
 def main():
     p = argparse.ArgumentParser(description="Pull daily close prices from Bloomberg.")
     p.add_argument("--dry-run", action="store_true",
                    help="show the symbol universe + request window; do NOT connect")
+    p.add_argument("--force", action="store_true",
+                   help="re-download the whole window even if already covered")
     args = p.parse_args()
 
     symbols = build_symbol_universe()
@@ -239,15 +275,46 @@ def main():
         print("no symbols to pull - run update_data.py first so the aggregates exist.")
         return 1
 
-    prices = pull_prices(symbols, start, end)
+    # INCREMENTAL: only fetch what prices.parquet does not already hold.
+    # The store is append-only - a pull can only ADD rows, never lose any,
+    # so switching windows back and forth costs nothing after the first pull.
+    existing = None
+    if os.path.exists(OUT_PATH) and not args.force:
+        existing = pd.read_parquet(OUT_PATH)
+        existing["date"] = pd.to_datetime(existing["date"])
+        print(f"existing store: {len(existing):,} rows, "
+              f"{existing['symbol'].nunique()} symbols "
+              f"({existing['date'].min().date()} -> {existing['date'].max().date()})")
+
+    buckets = plan_requests(symbols, start, end, existing)
+    if not buckets:
+        print("everything in this window is already in prices.parquet - "
+              "nothing to fetch (use --force to re-download).")
+        return 0
+    n_req = sum(len(v) for v in buckets.values())
+    print(f"incremental plan: {len(buckets)} span(s), {n_req} symbol-requests "
+          f"(fully-covered symbols skipped)")
+
+    parts = [] if existing is None else [existing]
+    for (span_a, span_b), syms in sorted(buckets.items()):
+        print(f"  span {span_a} -> {span_b}: {len(syms)} symbols")
+        got = pull_prices(syms, span_a, span_b)
+        if len(got):
+            got["date"] = pd.to_datetime(got["date"])
+            parts.append(got)
+
+    prices = pd.concat(parts, ignore_index=True)
     if prices.empty:
         print("Bloomberg returned no rows - check the Terminal is logged in.")
         return 1
+    # a symbol/date can arrive twice at span edges - keep the newest fetch
+    prices = (prices.drop_duplicates(subset=["symbol", "date"], keep="last")
+              .sort_values(["symbol", "date"]).reset_index(drop=True))
 
     os.makedirs(PRICES_DIR, exist_ok=True)
-    prices["date"] = pd.to_datetime(prices["date"])
-    prices = prices.sort_values(["symbol", "date"]).reset_index(drop=True)
-    prices.to_parquet(OUT_PATH, index=False)
+    tmp = OUT_PATH + ".tmp"
+    prices.to_parquet(tmp, index=False)      # atomic swap - never half-written
+    os.replace(tmp, OUT_PATH)
     print(f"saved {len(prices):,} rows for {prices['symbol'].nunique()} symbols "
           f"-> {OUT_PATH}")
 

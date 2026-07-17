@@ -757,4 +757,64 @@ for nb in ["08_ticker_conviction", "09_theme_conviction"]:
     else:
         print(f"trailing conviction already installed: {nb}")
 
-print("all patches processed (v11).")
+# ---- patch 15: TRADE LEDGER after the report card in 15/16 --------------------
+# One row per trade with SIGNED P&L at every horizon (a SELL profits when
+# the price falls, so positive always reads 'money made'), newest first,
+# plus closed-trade totals. This is the 'show me every trade' table.
+MD_LEDGER = """## Trade ledger: every trade and its P&L
+
+One row per signal, newest first. P&L is SIGNED trade profit - a SELL
+profits when the price falls - so a positive number always means money
+made, whichever side the trade was. Trades younger than the horizon have
+no P&L yet (still open)."""
+
+CODE_LEDGER = """# ==== TRADE LEDGER: every trade, signed P&L per horizon ====
+if len(perf):
+    ledger = perf.copy()
+    if 'theme' not in ledger.columns and 'theme' in sig_all.columns:
+        ledger = ledger.merge(
+            sig_all[['symbol', 'action_date', 'action', 'theme']]
+            .drop_duplicates(),
+            on=['symbol', 'action_date', 'action'], how='left')
+    sign = ledger['action'].map({'BUY': 1, 'SELL': -1})
+    for h in HORIZONS:
+        ledger[f'pnl_{h}d_%'] = (ledger[f'ret_{h}d'] * sign).round(2)
+    ledger = ledger.sort_values('action_date', ascending=False)
+    show_cols = [c for c in ['action_date', 'action', 'theme', 'symbol',
+                             'score'] if c in ledger.columns]
+    show_cols += [f'pnl_{h}d_%' for h in HORIZONS]
+    closed = ledger['pnl_20d_%'].dropna()
+    print(f'TRADE LEDGER - {len(ledger)} trades, newest first '
+          '(signed P&L: positive = money made)')
+    if len(closed):
+        print(f'closed 20d trades: {len(closed)} | total P&L '
+              f'{closed.sum():+.1f}% | avg {closed.mean():+.2f}% | '
+              f'winners {(closed > 0).mean() * 100:.0f}%')
+    else:
+        print('no trade old enough to close a 20d hold yet')
+    print()
+    print(ledger[show_cols].to_string(index=False))
+else:
+    print('no scored trades in this window')"""
+
+for nb in ["15_overlay_trading_signals", "16_overlay_theme_trading_signals"]:
+    d = load(nb)
+    if any("TRADE LEDGER" in "".join(c["source"]) for c in d["cells"]):
+        print(f"trade ledger already present: {nb}")
+        continue
+    # insert right AFTER the report-card cell so the ledger sits with the
+    # 20d numbers it itemises
+    idx = None
+    for i, c in enumerate(d["cells"]):
+        if c["cell_type"] == "code" and "perf = pd.DataFrame(rows)" in "".join(c["source"]):
+            idx = i
+            break
+    if idx is None:
+        print(f"report-card cell not found - ledger skipped: {nb}")
+        continue
+    d["cells"][idx + 1:idx + 1] = [cell("markdown", MD_LEDGER),
+                                   cell("code", CODE_LEDGER)]
+    save(nb, d)
+    print(f"trade ledger added: {nb}")
+
+print("all patches processed (v12).")
