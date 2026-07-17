@@ -585,21 +585,10 @@ def main():
     os.environ["PIPELINE_START_DATE"] = args.start
     os.environ["PIPELINE_END_DATE"] = args.end
 
-    # ---- 3b. EMERGING-TERM SCAN (LIVE runs only) ----
-    # After the fold, flag what retail is suddenly talking about that no
-    # theme covers - the early warning for the next 'bearings'. Live only:
-    # a backtest sees the past, and the past has no emerging terms. The scan
-    # reads the rolling text-free term counts, so it works on both machines.
-    # It only REPORTS - promoting a term into src/themes.py stays a human
-    # decision, so a noise spike can never silently pollute the themes.
-    if live:
-        log("scanning for emerging terms (nothing the themes cover yet)", fh)
-        # --promote: a term spiking hard enough is auto-added as a TRACKED
-        # theme (data/reference/auto_themes.csv) - it counts and scores from
-        # the next fold. It cannot enter the trade signals by itself: that
-        # requires a human to anchor it to an ETF in THEME_ETFS.
-        run([py, "helper/find_emerging_terms.py", "--top", "15", "--promote"],
-            fh, dry, show=True)
+    # (the automatic emerging-term scan/promotion was REMOVED by request -
+    #  'emerging' now means the fastest-GROWING tradeable themes, computed
+    #  in the overlays and the dashboard. helper/find_emerging_terms.py
+    #  remains available as a manual research tool for new vocabulary.)
 
     # ---- 4. SNAPSHOT the signals (never revised) ----
     import shutil

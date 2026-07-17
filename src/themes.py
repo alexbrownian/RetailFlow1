@@ -458,32 +458,6 @@ INTERNATIONAL_ADRS: dict[str, str] = {
     "Softbank": "SFTBY",
 }
 
-# ---------------------------------------------------------------------------
-# AUTO-PROMOTED THEMES - terms the emerging-term scanner flagged hard enough
-# to start TRACKING automatically (see helper/find_emerging_terms.py
-# --promote). Stored in a small committed csv (theme, keyword, first_seen)
-# so both machines see them. They count and score like any theme from the
-# moment they land, but they have NO ETF anchor - they stay out of the trade
-# signals until a human either adds them to THEME_ETFS or folds their
-# keywords into a proper hand-written theme above.
-# ---------------------------------------------------------------------------
-import os as _os
-
-AUTO_THEMES_PATH = _os.path.join(_os.path.dirname(_os.path.dirname(
-    _os.path.abspath(__file__))), "data", "reference", "auto_themes.csv")
-
-
-def load_auto_themes() -> dict[str, list[str]]:
-    """{theme_name: [keywords]} from the auto-promotions file, {} if none."""
-    if not _os.path.exists(AUTO_THEMES_PATH):
-        return {}
-    df = pd.read_csv(AUTO_THEMES_PATH)
-    out: dict[str, list[str]] = {}
-    for theme, kw in zip(df["theme"], df["keyword"]):
-        out.setdefault(str(theme), []).append(str(kw))
-    return out
-
-
 # Tokens are runs of letters/digits in the lowercased text, so "0DTE" and
 # "3nm" survive as single tokens. Anything with a space, hyphen or dot in
 # the keyword is treated as a phrase and substring-matched instead.
@@ -502,9 +476,7 @@ def _get_keyword_lookup():
         return _WORD_TO_THEMES, _PHRASE_TO_THEMES
     word_acc: dict[str, list[str]] = {}
     phrase_acc: dict[str, list[str]] = {}
-    all_themes = dict(THEME_KEYWORDS)
-    all_themes.update(load_auto_themes())    # auto-promoted terms count too
-    for theme, keywords in all_themes.items():
+    for theme, keywords in THEME_KEYWORDS.items():
         for kw in keywords:
             k = kw.lower()
             acc = phrase_acc if (" " in k or "-" in k or "." in k) else word_acc

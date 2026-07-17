@@ -53,13 +53,8 @@ MIN_RECENT_POSTS = 25    # a term must appear in at least this many recent posts
 MAX_ZIPF = 4.4           # wordfreq zipf above this = everyday English, drop it
                          # ("bearings" ~3.9, "inflation" ~4.3, "market" ~5.4)
 BASELINE_DAYS = 180
-
-# --promote thresholds: a term this hot becomes a TRACKED auto-theme
-# (counts + sentiment from the next fold). It stays OUT of trade signals
-# until a human anchors it to an ETF - tracking is automatic, trading is not.
-AUTO_RATIO = 10.0        # recent share must be >= 10x baseline share
-AUTO_MIN_POSTS = 50      # and carried by at least this many recent posts
-AUTO_MAX_PER_RUN = 3     # promotion budget per run - a meme week can't flood us
+# NOTE: this is a MANUAL research tool - it only reports. Auto-promotion of
+# terms into themes was removed; add keywords to src/themes.py by hand.
 
 
 def covered_terms() -> set:
@@ -149,46 +144,11 @@ def from_term_counts(recent_days):
             cutoff.strftime("%Y-%m-%d"), floor.strftime("%Y-%m-%d"))
 
 
-def promote(rows):
-    """Append the hottest qualifying terms to data/reference/auto_themes.csv
-    so they start being TRACKED (counted + scored) from the next fold.
-    Skips terms already promoted. Returns the list of new theme names."""
-    from src.themes import AUTO_THEMES_PATH, load_auto_themes
-
-    already = set(load_auto_themes().keys())
-    new_rows = []
-    for term, n, _rs, _bs, ratio in rows:
-        if len(new_rows) >= AUTO_MAX_PER_RUN:
-            break
-        if ratio < AUTO_RATIO or n < AUTO_MIN_POSTS:
-            continue
-        theme_name = "auto_" + term.replace(" ", "_")
-        if theme_name in already:
-            continue
-        new_rows.append({"theme": theme_name, "keyword": term,
-                         "first_seen": pd.Timestamp.today().strftime("%Y-%m-%d")})
-    if not new_rows:
-        return []
-
-    old = (pd.read_csv(AUTO_THEMES_PATH)
-           if os.path.exists(AUTO_THEMES_PATH)
-           else pd.DataFrame(columns=["theme", "keyword", "first_seen"]))
-    combined = pd.concat([old, pd.DataFrame(new_rows)], ignore_index=True)
-    os.makedirs(os.path.dirname(AUTO_THEMES_PATH), exist_ok=True)
-    tmp = AUTO_THEMES_PATH + ".tmp"
-    combined.to_csv(tmp, index=False)
-    os.replace(tmp, AUTO_THEMES_PATH)
-    return [r["theme"] for r in new_rows]
-
-
 def main():
     ap = argparse.ArgumentParser(description="Spot spiking terms no theme covers.")
     ap.add_argument("--recent-days", type=int, default=14,
                     help="the 'now' window to compare against history (default 14)")
     ap.add_argument("--top", type=int, default=30, help="how many terms to show")
-    ap.add_argument("--promote", action="store_true",
-                    help="auto-add the hottest qualifying terms as tracked "
-                         "auto-themes (no ETF anchor until a human adds one)")
     args = ap.parse_args()
 
     if os.path.exists(POSTS_PATH):
@@ -247,22 +207,9 @@ def main():
     if not rows:
         print("(nothing above the thresholds - lower MIN_RECENT_POSTS to dig deeper)")
 
-    if args.promote:
-        promoted = promote(rows)
-        if promoted:
-            print(f"\nAUTO-PROMOTED {len(promoted)} new tracked theme(s): "
-                  + ", ".join(promoted))
-            print("they count + score from the next fold. To make one "
-                  "TRADEABLE: give it an ETF in THEME_ETFS (src/themes.py), "
-                  "or fold its keyword into a hand-written theme.")
-            print("commit data/reference/auto_themes.csv so both machines see it.")
-        else:
-            print(f"\nno term met the promotion bar (>= {AUTO_RATIO:.0f}x spike "
-                  f"and >= {AUTO_MIN_POSTS} recent posts).")
-    else:
-        print("\nnext step: promising terms become keywords of a new or existing "
-              "theme in src/themes.py, then rerun update_data.py --full "
-              "(external) so history reflects them.")
+    print("\nnext step: promising terms become keywords of a new or existing "
+          "theme in src/themes.py (by hand), then rerun update_data.py --full "
+          "(external) so history reflects them.")
     return 0
 
 

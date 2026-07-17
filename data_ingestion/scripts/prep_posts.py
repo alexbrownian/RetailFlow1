@@ -153,5 +153,81 @@ def main():
     print("Next: open notebooks/01_clean_data.ipynb (or 02) - they read this file directly.")
 
 
+def append_mode(new_files):
+    """APPEND new raw dump file(s) into the EXISTING posts.parquet without a
+    full rebuild. Used for the monthly gap dumps (RS_2026-XX.zst):
+
+        python data_ingestion/scripts/prep_posts.py --append data/raw/RS_2026-06.zst
+
+    How it stays correct:
+      * the finance-subreddit filter applies (monthly dumps are ALL of
+        Reddit - without the filter the master would balloon 50x)
+      * every id already in the master is skipped (same first-seen-wins rule)
+      * parquet files cannot be appended in place, so the master is streamed
+        batch-by-batch into a .tmp alongside the new rows, then swapped in
+        atomically - memory stays low, and a crash never corrupts the master
+    """
+    wanted = set(s.lower() for s in read_subreddit_list(SUBS_FILE))
+    print("APPEND mode |", len(new_files), "new file(s) | filter:",
+          f"{len(wanted)} finance subreddits")
+
+    if not os.path.exists(OUTPUT_FILE):
+        print("no existing posts.parquet - run the normal full build instead.")
+        return 1
+
+    # ids already in the master (streamed; ~0.1 GB per million posts)
+    master = pq.ParquetFile(OUTPUT_FILE)
+    seen_ids = set()
+    for b in master.iter_batches(columns=["id"], batch_size=500_000):
+        seen_ids.update(b.column("id").to_pylist())
+    print(f"master holds {len(seen_ids):,} posts")
+
+    tmp = OUTPUT_FILE + ".tmp"
+    writer = pq.ParquetWriter(tmp, SCHEMA, compression="zstd")
+
+    # 1. copy the existing master through unchanged, batch by batch
+    for b in master.iter_batches(batch_size=250_000):
+        writer.write_table(pa.Table.from_batches([b], schema=SCHEMA))
+
+    # 2. stream the new dumps: normalise -> filter -> dedup -> append
+    total_new = total_dupes = 0
+    batch = []
+    for filepath in new_files:
+        print("reading", os.path.basename(filepath), "...", flush=True)
+        kept_from_file = 0
+        for record in read_json_lines(filepath):
+            post = normalise(record)
+            if not keep_this_post(post, wanted, START_DATE, END_DATE):
+                continue
+            if post["id"] in seen_ids:
+                total_dupes += 1
+                continue
+            seen_ids.add(post["id"])
+            batch.append(post)
+            kept_from_file += 1
+            if len(batch) >= BATCH_SIZE:
+                write_batch(writer, batch)
+                total_new += len(batch)
+                batch = []
+                print("  ...", total_new, "new posts appended so far", flush=True)
+        if batch:
+            write_batch(writer, batch)
+            total_new += len(batch)
+            batch = []
+        print("  done:", kept_from_file, "posts kept from",
+              os.path.basename(filepath), flush=True)
+
+    writer.close()
+    os.replace(tmp, OUTPUT_FILE)          # atomic swap - never half-written
+    print("-" * 60)
+    print(f"APPENDED {total_new:,} new posts (skipped {total_dupes:,} "
+          f"already-known ids) -> {OUTPUT_FILE}")
+    print("next: python update_data.py --full  (rebuild aggregates over the "
+          "new months)")
+    return 0
+
+
 if __name__ == "__main__":
+    if len(sys.argv) > 2 and sys.argv[1] == "--append":
+        raise SystemExit(append_mode(sys.argv[2:]))
     main()

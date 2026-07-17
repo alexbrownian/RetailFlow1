@@ -21,9 +21,6 @@ data/reference/*
 !data/reference/nasdaqlisted.txt
 !data/reference/otherlisted.txt
 !data/reference/ticker_classification.csv
-# auto-promoted emerging themes (theme, keyword, first_seen - no post data);
-# committed so both machines track the same auto-themes
-!data/reference/auto_themes.csv
 
 # ---- ABSTRACTED_DATA: the ONE data folder that IS committed ----
 # It holds only the five abstracted aggregates (daily counts + sentiment

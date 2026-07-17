@@ -724,4 +724,37 @@ for nb in ["15_overlay_trading_signals", "16_overlay_theme_trading_signals"]:
     else:
         print(f"triangle snap-to-line already installed: {nb}")
 
-print("all patches processed (v10).")
+# ---- patch 14: DISPLAY conviction becomes TRAILING (live-parity) --------------
+# Notebooks 08/09 z-scored bull pressure against the WHOLE window's mean -
+# the 2021 volume mania dragged that mean so high that every normal-volume
+# day since plots as negative ('quieter than the window average' masquerading
+# as 'bearish'). The signal engine (notebook 10) already uses TRAILING
+# baselines; this makes the display charts use the same rule, so charts and
+# signals finally agree: each day is scored ONLY against its preceding 84
+# days, no future information, no mania distortion.
+CONV_OLD = "conviction_z = (roll_bp - roll_bp.mean()) / roll_bp.std().replace(0, np.nan)"
+CONV_NEW = """# TRAILING z (live-parity, same rule as notebook 10): each day scored
+# against the PRECEDING 84 days only - no future info, and quiet periods
+# are no longer dragged negative by the 2021 volume mania
+_mu = roll_bp.rolling(84, min_periods=28).mean()
+_sd = roll_bp.rolling(84, min_periods=28).std().replace(0, np.nan)
+conviction_z = (roll_bp - _mu) / _sd"""
+for nb in ["08_ticker_conviction", "09_theme_conviction"]:
+    d = load(nb)
+    hits = 0
+    for c in d["cells"]:
+        if c["cell_type"] != "code":
+            continue
+        s = "".join(c["source"])
+        if CONV_OLD in s:
+            c["source"] = s.replace(CONV_OLD, CONV_NEW).splitlines(keepends=True)
+            c["outputs"] = []
+            c["execution_count"] = None
+            hits += 1
+    if hits:
+        save(nb, d)
+        print(f"trailing conviction installed: {nb}")
+    else:
+        print(f"trailing conviction already installed: {nb}")
+
+print("all patches processed (v11).")

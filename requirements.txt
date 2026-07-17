@@ -17,6 +17,7 @@ joblib
 pytest
 pip-system-certs
 streamlit
+plotly
 
 # blpapi (Bloomberg, for pull_bloomberg_prices.py - install on each machine)
 # is not on PyPI. Install it separately from Bloomberg's own index, with the
