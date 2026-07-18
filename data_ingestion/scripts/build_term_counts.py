@@ -7,7 +7,7 @@
 #
 # EXTERNAL machine (needs posts.parquet). Runs once over the last RETAIN_DAYS
 # of history; after that, live folds keep the file current on any machine.
-# Committing ABSTRACTED_DATA ships it to the work laptop like the other five.
+# Committing ABSTRACTED_DATA ships it to the HP like the other five.
 
 import os
 import sys

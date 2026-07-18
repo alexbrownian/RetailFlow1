@@ -792,18 +792,41 @@ if len(perf):
               f'winners {(closed > 0).mean() * 100:.0f}%')
     else:
         print('no trade old enough to close a 20d hold yet')
-    print()
-    print(ledger[show_cols].to_string(index=False))
+    # ---- per-side breakdown: the BUY book and the SELL book separately ----
+    for side in ('BUY', 'SELL'):
+        part = ledger[ledger['action'] == side]
+        if not len(part):
+            print(f'\\n--- {side}: no trades in this window ---')
+            continue
+        pc = part['pnl_20d_%'].dropna()
+        print(f'\\n--- {side} trades: {len(part)} ---')
+        if len(pc):
+            print(f'closed: {len(pc)} | total {pc.sum():+.1f}% | '
+                  f'avg {pc.mean():+.2f}% | winners {(pc > 0).mean() * 100:.0f}% | '
+                  f'best {pc.max():+.2f}% | worst {pc.min():+.2f}%')
+        else:
+            print('(all still open)')
+        print(part[show_cols].to_string(index=False))
 else:
     print('no scored trades in this window')"""
 
 for nb in ["15_overlay_trading_signals", "16_overlay_theme_trading_signals"]:
     d = load(nb)
-    if any("TRADE LEDGER" in "".join(c["source"]) for c in d["cells"]):
-        print(f"trade ledger already present: {nb}")
+    # refresh an existing ledger cell in place if its code has moved on
+    hits = [c for c in d["cells"]
+            if c["cell_type"] == "code" and "TRADE LEDGER" in "".join(c["source"])]
+    if hits:
+        if "".join(hits[0]["source"]).strip() == CODE_LEDGER.strip():
+            print(f"trade ledger already current: {nb}")
+            continue
+        hits[0]["source"] = CODE_LEDGER.splitlines(keepends=True)
+        hits[0]["outputs"] = []
+        hits[0]["execution_count"] = None
+        save(nb, d)
+        print(f"trade ledger refreshed (per-side breakdown): {nb}")
         continue
-    # insert right AFTER the report-card cell so the ledger sits with the
-    # 20d numbers it itemises
+    # first install: insert right AFTER the report-card cell so the ledger
+    # sits with the 20d numbers it itemises
     idx = None
     for i, c in enumerate(d["cells"]):
         if c["cell_type"] == "code" and "perf = pd.DataFrame(rows)" in "".join(c["source"]):

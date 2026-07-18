@@ -218,7 +218,29 @@ def append_mode(new_files):
               os.path.basename(filepath), flush=True)
 
     writer.close()
-    os.replace(tmp, OUTPUT_FILE)          # atomic swap - never half-written
+    # atomic swap - never half-written. Windows quirk: OneDrive/antivirus
+    # can hold a fresh multi-GB file for a moment; retry patiently instead
+    # of throwing away a long run over a transient lock.
+    import time
+    for attempt in range(6):
+        try:
+            os.replace(tmp, OUTPUT_FILE)
+            break
+        except PermissionError:
+            if attempt == 5:
+                print("!" * 60)
+                print("posts.parquet is LOCKED (OneDrive sync? antivirus? an")
+                print("open notebook?). The finished result is safe in:")
+                print(f"  {tmp}")
+                print("Close/pause the locker, then run (safe to run twice):")
+                print("  if (Test-Path data\\processed\\posts.parquet.tmp) "
+                      "{ Move-Item -Force data\\processed\\posts.parquet.tmp "
+                      "data\\processed\\posts.parquet }")
+                print("!" * 60)
+                raise
+            print(f"  swap blocked (attempt {attempt + 1}/6) - waiting 30s "
+                  "for the lock to clear...", flush=True)
+            time.sleep(30)
     print("-" * 60)
     print(f"APPENDED {total_new:,} new posts (skipped {total_dupes:,} "
           f"already-known ids) -> {OUTPUT_FILE}")

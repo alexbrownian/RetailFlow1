@@ -1,0 +1,624 @@
+[11:30:35] ============================================================
+[11:30:35] UPDATE DATA
+[11:30:35]   window : 2026-01-08 -> 2026-06-08
+[11:30:35]   machine: EXTERNAL (raw store) (posts.parquet present)
+[11:30:35]   path   : BACKTEST view (re-render overlays only)
+[11:30:35]   fetch  : no (backtest or --skip-fetch)
+[11:30:35] ============================================================
+[11:30:39] fetch skipped
+[11:30:39] merging live raw -> posts.parquet (close Jupyter first)
+[11:30:39] RUN  C:\Python312\python.exe data_ingestion/scripts/merge_live.py
+[11:31:05] --- DATA COVERAGE: posts per month | source = reddit ---
+[11:31:05]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[11:31:05]   2008       .      .     31     15      1      8     18     25     35     55     66     61
+[11:31:05]   2009      47     87     92     93     74     86    170    157    196     98     87    113
+[11:31:05]   2010     107    103    135    241    290    180    204    203    261    236    254    306
+[11:31:05]   2011     575    559    569    700   1.4k   2.8k   1.7k   1.8k   1.5k   1.7k   1.9k   2.1k
+[11:31:05]   2012    3.0k   2.9k   3.1k   2.9k   3.3k   3.0k   3.3k   3.5k   3.0k   3.3k   3.3k   3.4k
+[11:31:05]   2013    5.3k   5.8k  10.0k  19.3k  10.9k   7.8k   8.3k   8.7k   7.6k  12.0k  25.2k  24.9k
+[11:31:05]   2014   21.9k  26.8k  26.2k  19.3k  19.4k  19.3k  20.6k  18.9k  19.4k  20.2k  20.3k  21.6k
+[11:31:05]   2015   26.6k  22.3k  23.2k  22.0k  21.1k  21.8k  24.8k  23.9k  19.6k  21.1k  20.7k  20.9k
+[11:31:05]   2016   27.1k  23.2k  23.5k  23.8k  23.4k  27.3k  25.5k  26.0k  23.9k  23.0k  24.7k  25.8k
+[11:31:05]   2017   35.2k  32.0k  37.6k  31.2k  39.9k  42.1k  44.6k  54.4k  52.4k  59.3k  84.6k 117.0k
+[11:31:05]   2018  116.0k  78.8k  67.7k  59.0k  59.4k  59.4k  60.3k  62.0k  55.9k  57.7k  49.6k  48.7k
+[11:31:05]   2019   50.4k  41.4k  42.8k  44.5k  45.4k  47.0k  48.4k  48.9k  40.7k  41.3k  39.7k  37.0k
+[11:31:05]   2020   49.3k  68.8k 107.2k  84.5k  84.0k  95.7k  84.2k  81.4k  70.5k  68.6k  82.9k 100.3k
+[11:31:05]   2021  666.1k 586.1k 246.6k 174.4k 190.7k 196.6k 127.3k 142.7k 121.7k 127.4k 139.8k 113.6k
+[11:31:05]   2022  116.6k  86.0k  80.6k  74.3k  78.0k  64.9k  59.0k  93.1k  64.5k  68.2k  69.6k  64.3k
+[11:31:05]   2023   66.5k  61.2k  74.5k      1      .      .   1.5k   2.1k   1.2k   1.3k   1.3k   1.5k
+[11:31:05]   2024    2.1k   3.5k   3.9k   2.8k   3.3k   2.8k   2.7k   2.9k   2.0k   2.1k   2.6k   2.3k
+[11:31:05]   2025    2.4k   2.5k   2.5k   2.5k   2.1k   1.9k   2.4k   2.0k   1.8k   1.7k   1.4k   1.2k
+[11:31:05]   2026   47.9k  44.6k  45.7k  46.4k  47.7k  43.4k   2.6k      .      .      .      .      .
+[11:31:05] --- DATA COVERAGE: posts per month | source = stocktwits ---
+[11:31:05]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[11:31:05]   2023       .      .      .      .      .      .      .      .      .      .      .      3
+[11:31:05]   2024       .      .      .      .      .      .      .      4      .      1      2      1
+[11:31:05]   2025       .      1      1      1      .      2      1      6      1      .      5      5
+[11:31:05]   2026       3     15     15     47    119    423   5.1k      .      .      .      .      .
+[11:31:06] --- DATA COVERAGE: posts per month | source = x ---
+[11:31:06]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[11:31:06]   2017       .      .      .      .      .      1      .      .      .      .      .      .
+[11:31:06]   2025       .      .      .      .      1      .      .      .      1      .      .      1
+[11:31:06]   2026       .      .      .      1      .      2   2.8k      .      .      .      .      .
+[11:31:06] ('.' = NO data that month - a gap, not a quiet month)
+[11:31:06] --- WINDOW CHECK: view 2026-01-08 -> 2026-06-08 | aggregates span 2017-01-01 -> 2026-07-16 ---
+[11:31:06]   reddit     [OK] 29 mentions over 13 days (~9% of the window)
+[11:31:06]   stocktwits [OK] 753 mentions over 78 days (~52% of the window)
+[11:31:06]   x          [NO DATA in window] this source spans 2017-01-01 -> 2026-07-16
+[11:31:06] backtest: aggregates + signals are up to date - only re-rendering the overlays for 2026-01-08 -> 2026-06-08
+[11:31:06] snapshot -> c:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals.parquet
+[11:31:06] snapshot -> c:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals_tickers.parquet
+[11:31:06] pulling Bloomberg prices for the overlays (Terminal must be open)
+[11:31:06] RUN  C:\Python312\python.exe pull_bloomberg_prices.py
+[11:32:05] FAIL (see the output above)
+[11:32:05] running notebook 11_overlay_ticker_mentions (output streams below)
+[11:32:05] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\11_overlay_ticker_mentions.ipynb --output 11_overlay_ticker_mentions.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[11:47:34] ============================================================
+[11:47:34] UPDATE DATA
+[11:47:34]   window : 2025-07-16 -> LIVE (newest)
+[11:47:34]   machine: EXTERNAL (raw store) (posts.parquet present)
+[11:47:34]   path   : LIVE fast (incremental aggregates + 08/09/10)
+[11:47:34]   fetch  : yes
+[11:47:34] ============================================================
+[11:47:43] RUN  C:\Python312\python.exe api_calls/fetch_all.py --no-merge --lookback-days 7 --max-credits 90
+[11:53:47] ============================================================
+[11:53:47] UPDATE DATA
+[11:53:47]   window : 2026-01-08 -> 2026-06-08
+[11:53:47]   machine: EXTERNAL (raw store) (posts.parquet present)
+[11:53:47]   path   : BACKTEST view (re-render overlays only)
+[11:53:47]   fetch  : no (backtest or --skip-fetch)
+[11:53:47] ============================================================
+[11:53:51] fetch skipped
+[11:53:51] merging live raw -> posts.parquet (close Jupyter first)
+[11:53:51] RUN  C:\Python312\python.exe data_ingestion/scripts/merge_live.py
+[11:54:57] --- DATA COVERAGE: posts per month | source = reddit ---
+[11:54:57]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[11:54:57]   2008       .      .     31     15      1      8     18     25     35     55     66     61
+[11:54:57]   2009      47     87     92     93     74     86    170    157    196     98     87    113
+[11:54:57]   2010     107    103    135    241    290    180    204    203    261    236    254    306
+[11:54:57]   2011     575    559    569    700   1.4k   2.8k   1.7k   1.8k   1.5k   1.7k   1.9k   2.1k
+[11:54:57]   2012    3.0k   2.9k   3.1k   2.9k   3.3k   3.0k   3.3k   3.5k   3.0k   3.3k   3.3k   3.4k
+[11:54:57]   2013    5.3k   5.8k  10.0k  19.3k  10.9k   7.8k   8.3k   8.7k   7.6k  12.0k  25.2k  24.9k
+[11:54:57]   2014   21.9k  26.8k  26.2k  19.3k  19.4k  19.3k  20.6k  18.9k  19.4k  20.2k  20.3k  21.6k
+[11:54:57]   2015   26.6k  22.3k  23.2k  22.0k  21.1k  21.8k  24.8k  23.9k  19.6k  21.1k  20.7k  20.9k
+[11:54:57]   2016   27.1k  23.2k  23.5k  23.8k  23.4k  27.3k  25.5k  26.0k  23.9k  23.0k  24.7k  25.8k
+[11:54:57]   2017   35.2k  32.0k  37.6k  31.2k  39.9k  42.1k  44.6k  54.4k  52.4k  59.3k  84.6k 117.0k
+[11:54:57]   2018  116.0k  78.8k  67.7k  59.0k  59.4k  59.4k  60.3k  62.0k  55.9k  57.7k  49.6k  48.7k
+[11:54:57]   2019   50.4k  41.4k  42.8k  44.5k  45.4k  47.0k  48.4k  48.9k  40.7k  41.3k  39.7k  37.0k
+[11:54:57]   2020   49.3k  68.8k 107.2k  84.5k  84.0k  95.7k  84.2k  81.4k  70.5k  68.6k  82.9k 100.3k
+[11:54:57]   2021  666.1k 586.1k 246.6k 174.4k 190.7k 196.6k 127.3k 142.7k 121.7k 127.4k 139.8k 113.6k
+[11:54:57]   2022  116.6k  86.0k  80.6k  74.3k  78.0k  64.9k  59.0k  93.1k  64.5k  68.2k  69.6k  64.3k
+[11:54:57]   2023   66.5k  61.2k  74.5k      1      .      .   1.5k   2.1k   1.2k   1.3k   1.3k   1.5k
+[11:54:57]   2024    2.1k   3.5k   3.9k   2.8k   3.3k   2.8k   2.7k   2.9k   2.0k   2.1k   2.6k   2.3k
+[11:54:57]   2025    2.4k   2.5k   2.5k   2.5k   2.1k   1.9k   2.4k   2.0k   1.8k   1.7k   1.4k   1.2k
+[11:54:57]   2026   47.9k  44.6k  45.7k  46.4k  47.7k  43.4k   2.6k      .      .      .      .      .
+[11:54:57] --- DATA COVERAGE: posts per month | source = stocktwits ---
+[11:54:57]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[11:54:57]   2023       .      .      .      .      .      .      .      .      .      .      .      3
+[11:54:57]   2024       .      .      .      .      .      .      .      4      .      1      2      1
+[11:54:57]   2025       .      1      1      1      .      2      1      6      1      .      5      5
+[11:54:57]   2026       3     15     15     51    119    423   5.6k      .      .      .      .      .
+[11:54:58] --- DATA COVERAGE: posts per month | source = x ---
+[11:54:58]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[11:54:58]   2017       .      .      .      .      .      1      .      .      .      .      .      .
+[11:54:58]   2025       .      .      .      .      1      .      .      .      1      .      .      1
+[11:54:58]   2026       .      .      .      1      .      2   2.8k      .      .      .      .      .
+[11:54:58] ('.' = NO data that month - a gap, not a quiet month)
+[11:54:58] --- WINDOW CHECK: view 2026-01-08 -> 2026-06-08 | aggregates span 2017-01-01 -> 2026-07-16 ---
+[11:54:58]   reddit     [OK] 29 mentions over 13 days (~9% of the window)
+[11:54:58]   stocktwits [OK] 753 mentions over 78 days (~52% of the window)
+[11:54:58]   x          [NO DATA in window] this source spans 2017-01-01 -> 2026-07-16
+[11:54:58] backtest: aggregates + signals are up to date - only re-rendering the overlays for 2026-01-08 -> 2026-06-08
+[11:54:58] snapshot -> c:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals.parquet
+[11:54:58] snapshot -> c:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals_tickers.parquet
+[11:54:58] pulling Bloomberg prices for the overlays (Terminal must be open)
+[11:54:58] RUN  C:\Python312\python.exe pull_bloomberg_prices.py
+[11:55:04] running notebook 11_overlay_ticker_mentions (output streams below)
+[11:55:04] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\11_overlay_ticker_mentions.ipynb --output 11_overlay_ticker_mentions.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[11:55:17] ok   11_overlay_ticker_mentions
+[11:55:17] running notebook 12_overlay_ticker_first_derivative (output streams below)
+[11:55:17] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\12_overlay_ticker_first_derivative.ipynb --output 12_overlay_ticker_first_derivative.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[11:55:30] ok   12_overlay_ticker_first_derivative
+[11:55:30] running notebook 13_overlay_theme_first_derivative (output streams below)
+[11:55:30] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\13_overlay_theme_first_derivative.ipynb --output 13_overlay_theme_first_derivative.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[11:55:40] ok   13_overlay_theme_first_derivative
+[11:55:40] running notebook 14_overlay_theme_conviction (output streams below)
+[11:55:40] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\14_overlay_theme_conviction.ipynb --output 14_overlay_theme_conviction.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[11:55:49] ok   14_overlay_theme_conviction
+[11:55:49] running notebook 15_overlay_trading_signals (output streams below)
+[11:55:49] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\15_overlay_trading_signals.ipynb --output 15_overlay_trading_signals.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[11:55:59] ok   15_overlay_trading_signals
+[11:55:59] running notebook 16_overlay_theme_trading_signals (output streams below)
+[11:55:59] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\16_overlay_theme_trading_signals.ipynb --output 16_overlay_theme_trading_signals.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[11:56:09] ok   16_overlay_theme_trading_signals
+[11:56:09] backtest view: nothing rebuilt, nothing published
+[11:56:09] safety check: ABSTRACTED_DATA is text-free?
+[11:56:09]   daily_ticker_counts.parquet               1.64 MB | ['date', 'ticker', 'mention_count']
+[11:56:09]   daily_ticker_counts_by_source.parquet     1.82 MB | ['date', 'ticker', 'source', 'mention_count']
+[11:56:09]   daily_ticker_sentiment.parquet            5.18 MB | ['date', 'ticker', 'n_posts', 'avg_sentiment', 'net_bullish']
+[11:56:09]   daily_theme_counts.parquet                0.18 MB | ['date', 'theme', 'mention_count']
+[11:56:09]   daily_theme_sentiment.parquet             1.16 MB | ['date', 'theme', 'n_posts', 'avg_sentiment', 'net_bullish']
+[11:56:09]   daily_term_counts.parquet                 0.13 MB | ['date', 'term', 'mention_count']
+[11:56:09] safety check: PASS - safe to commit
+[11:56:09] 
+[11:56:09] ============================================================
+[11:56:09] RUN SUMMARY
+[11:56:09]   window        : 2026-01-08 -> 2026-06-08
+[11:56:09]   machine/path  : EXTERNAL | BACKTEST view (re-render overlays only)
+[11:56:10]   post store    : 8,241,633 posts total
+[11:56:11]     reddit     newest 2026-07-16
+[11:56:11]     stocktwits newest 2026-07-18
+[11:56:11]     x          newest 2026-07-16
+[11:56:11]   aggregates    : 2017-01-01 -> 2026-07-16
+[11:56:11]   theme signals : 414 on file
+[11:56:11]   ticker signals : 346 on file
+[11:56:11]   price overlays: rendered (11-16)
+[11:56:11]   safety check  : PASS
+[11:56:11] ============================================================
+[11:57:44] ============================================================
+[11:57:44] UPDATE DATA
+[11:57:44]   window : 2026-01-01 -> 2026-06-11
+[11:57:44]   machine: EXTERNAL (raw store) (posts.parquet present)
+[11:57:44]   path   : BACKTEST view (re-render overlays only)
+[11:57:44]   fetch  : no (backtest or --skip-fetch)
+[11:57:44] ============================================================
+[11:57:48] fetch skipped
+[11:57:48] merging live raw -> posts.parquet (close Jupyter first)
+[11:57:48] RUN  C:\Python312\python.exe data_ingestion/scripts/merge_live.py
+[11:59:13] --- DATA COVERAGE: posts per month | source = reddit ---
+[11:59:13]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[11:59:13]   2008       .      .     31     15      1      8     18     25     35     55     66     61
+[11:59:13]   2009      47     87     92     93     74     86    170    157    196     98     87    113
+[11:59:13]   2010     107    103    135    241    290    180    204    203    261    236    254    306
+[11:59:13]   2011     575    559    569    700   1.4k   2.8k   1.7k   1.8k   1.5k   1.7k   1.9k   2.1k
+[11:59:13]   2012    3.0k   2.9k   3.1k   2.9k   3.3k   3.0k   3.3k   3.5k   3.0k   3.3k   3.3k   3.4k
+[11:59:13]   2013    5.3k   5.8k  10.0k  19.3k  10.9k   7.8k   8.3k   8.7k   7.6k  12.0k  25.2k  24.9k
+[11:59:13]   2014   21.9k  26.8k  26.2k  19.3k  19.4k  19.3k  20.6k  18.9k  19.4k  20.2k  20.3k  21.6k
+[11:59:13]   2015   26.6k  22.3k  23.2k  22.0k  21.1k  21.8k  24.8k  23.9k  19.6k  21.1k  20.7k  20.9k
+[11:59:13]   2016   27.1k  23.2k  23.5k  23.8k  23.4k  27.3k  25.5k  26.0k  23.9k  23.0k  24.7k  25.8k
+[11:59:13]   2017   35.2k  32.0k  37.6k  31.2k  39.9k  42.1k  44.6k  54.4k  52.4k  59.3k  84.6k 117.0k
+[11:59:13]   2018  116.0k  78.8k  67.7k  59.0k  59.4k  59.4k  60.3k  62.0k  55.9k  57.7k  49.6k  48.7k
+[11:59:13]   2019   50.4k  41.4k  42.8k  44.5k  45.4k  47.0k  48.4k  48.9k  40.7k  41.3k  39.7k  37.0k
+[11:59:13]   2020   49.3k  68.8k 107.2k  84.5k  84.0k  95.7k  84.2k  81.4k  70.5k  68.6k  82.9k 100.3k
+[11:59:13]   2021  666.1k 586.1k 246.6k 174.4k 190.7k 196.6k 127.3k 142.7k 121.7k 127.4k 139.8k 113.6k
+[11:59:13]   2022  116.6k  86.0k  80.6k  74.3k  78.0k  64.9k  59.0k  93.1k  64.5k  68.2k  69.6k  64.3k
+[11:59:13]   2023   66.5k  61.2k  74.5k      1      .      .   1.5k   2.1k   1.2k   1.3k   1.3k   1.5k
+[11:59:13]   2024    2.1k   3.5k   3.9k   2.8k   3.3k   2.8k   2.7k   2.9k   2.0k   2.1k   2.6k   2.3k
+[11:59:13]   2025    2.4k   2.5k   2.5k   2.5k   2.1k   1.9k   2.4k   2.0k   1.8k   1.7k   1.4k   1.2k
+[11:59:13]   2026   47.9k  44.6k  45.7k  46.4k  47.7k  43.4k   2.6k      .      .      .      .      .
+[11:59:14] --- DATA COVERAGE: posts per month | source = stocktwits ---
+[11:59:14]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[11:59:14]   2023       .      .      .      .      .      .      .      .      .      .      .      3
+[11:59:14]   2024       .      .      .      .      .      .      .      4      .      1      2      1
+[11:59:14]   2025       .      1      1      1      .      2      1      6      1      .      5      5
+[11:59:14]   2026       3     15     15     51    119    423   5.6k      .      .      .      .      .
+[11:59:15] --- DATA COVERAGE: posts per month | source = x ---
+[11:59:15]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[11:59:15]   2017       .      .      .      .      .      1      .      .      .      .      .      .
+[11:59:15]   2025       .      .      .      .      1      .      .      .      1      .      .      1
+[11:59:15]   2026       .      .      .      1      .      2   2.8k      .      .      .      .      .
+[11:59:15] ('.' = NO data that month - a gap, not a quiet month)
+[11:59:16] --- WINDOW CHECK: view 2026-01-01 -> 2026-06-11 | aggregates span 2017-01-01 -> 2026-07-16 ---
+[11:59:16]   reddit     [OK] 30 mentions over 14 days (~9% of the window)
+[11:59:16]   stocktwits [OK] 840 mentions over 81 days (~50% of the window)
+[11:59:16]   x          [NO DATA in window] this source spans 2017-01-01 -> 2026-07-16
+[11:59:16] backtest: aggregates + signals are up to date - only re-rendering the overlays for 2026-01-01 -> 2026-06-11
+[11:59:16] snapshot -> C:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals.parquet
+[11:59:16] snapshot -> C:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals_tickers.parquet
+[11:59:16] pulling Bloomberg prices for the overlays (Terminal must be open)
+[11:59:16] RUN  C:\Python312\python.exe pull_bloomberg_prices.py
+[11:59:21] running notebook 11_overlay_ticker_mentions (output streams below)
+[11:59:21] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\11_overlay_ticker_mentions.ipynb --output 11_overlay_ticker_mentions.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[11:59:35] ok   11_overlay_ticker_mentions
+[11:59:35] running notebook 12_overlay_ticker_first_derivative (output streams below)
+[11:59:35] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\12_overlay_ticker_first_derivative.ipynb --output 12_overlay_ticker_first_derivative.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[11:59:49] ok   12_overlay_ticker_first_derivative
+[11:59:49] running notebook 13_overlay_theme_first_derivative (output streams below)
+[11:59:49] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\13_overlay_theme_first_derivative.ipynb --output 13_overlay_theme_first_derivative.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[12:00:01] ok   13_overlay_theme_first_derivative
+[12:00:01] running notebook 14_overlay_theme_conviction (output streams below)
+[12:00:01] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\14_overlay_theme_conviction.ipynb --output 14_overlay_theme_conviction.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[12:00:11] ok   14_overlay_theme_conviction
+[12:00:11] running notebook 15_overlay_trading_signals (output streams below)
+[12:00:11] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\15_overlay_trading_signals.ipynb --output 15_overlay_trading_signals.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[12:00:21] ok   15_overlay_trading_signals
+[12:00:21] running notebook 16_overlay_theme_trading_signals (output streams below)
+[12:00:21] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\16_overlay_theme_trading_signals.ipynb --output 16_overlay_theme_trading_signals.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[12:00:31] ok   16_overlay_theme_trading_signals
+[12:00:31] backtest view: nothing rebuilt, nothing published
+[12:00:31] safety check: ABSTRACTED_DATA is text-free?
+[12:00:31]   daily_ticker_counts.parquet               1.64 MB | ['date', 'ticker', 'mention_count']
+[12:00:31]   daily_ticker_counts_by_source.parquet     1.82 MB | ['date', 'ticker', 'source', 'mention_count']
+[12:00:31]   daily_ticker_sentiment.parquet            5.18 MB | ['date', 'ticker', 'n_posts', 'avg_sentiment', 'net_bullish']
+[12:00:31]   daily_theme_counts.parquet                0.18 MB | ['date', 'theme', 'mention_count']
+[12:00:31]   daily_theme_sentiment.parquet             1.16 MB | ['date', 'theme', 'n_posts', 'avg_sentiment', 'net_bullish']
+[12:00:31]   daily_term_counts.parquet                 0.13 MB | ['date', 'term', 'mention_count']
+[12:00:31] safety check: PASS - safe to commit
+[12:00:31] 
+[12:00:31] ============================================================
+[12:00:31] RUN SUMMARY
+[12:00:31]   window        : 2026-01-01 -> 2026-06-11
+[12:00:31]   machine/path  : EXTERNAL | BACKTEST view (re-render overlays only)
+[12:00:32]   post store    : 8,241,633 posts total
+[12:00:35]     reddit     newest 2026-07-16
+[12:00:35]     stocktwits newest 2026-07-18
+[12:00:35]     x          newest 2026-07-16
+[12:00:35]   aggregates    : 2017-01-01 -> 2026-07-16
+[12:00:35]   theme signals : 414 on file
+[12:00:35]   ticker signals : 346 on file
+[12:00:35]   price overlays: rendered (11-16)
+[12:00:35]   safety check  : PASS
+[12:00:35] ============================================================
+[12:01:18] ============================================================
+[12:01:18] UPDATE DATA
+[12:01:18]   window : 2026-01-01 -> LIVE (newest)
+[12:01:18]   machine: EXTERNAL (raw store) (posts.parquet present)
+[12:01:18]   path   : LIVE fast (incremental aggregates + 08/09/10)
+[12:01:18]   fetch  : yes
+[12:01:18] ============================================================
+[12:01:20] RUN  C:\Python312\python.exe api_calls/fetch_all.py --no-merge --lookback-days 7 --max-credits 90
+[13:36:59] ============================================================
+[13:36:59] UPDATE DATA
+[13:36:59]   window : 2026-01-01 -> 2026-07-16
+[13:36:59]   machine: EXTERNAL (raw store) (posts.parquet present)
+[13:36:59]   path   : BACKTEST view (re-render overlays only)
+[13:36:59]   fetch  : no (backtest or --skip-fetch)
+[13:36:59] ============================================================
+[13:37:05] fetch skipped
+[13:37:05] backtest, nothing fetched - live merge skipped
+[13:37:15] --- DATA COVERAGE: posts per month | source = reddit ---
+[13:37:15]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[13:37:15]   2008       .      .     31     15      1      8     18     25     35     55     66     61
+[13:37:15]   2009      47     87     92     93     74     86    170    157    196     98     87    113
+[13:37:15]   2010     107    103    135    241    290    180    204    203    261    236    254    306
+[13:37:15]   2011     575    559    569    700   1.4k   2.8k   1.7k   1.8k   1.5k   1.7k   1.9k   2.1k
+[13:37:15]   2012    3.0k   2.9k   3.1k   2.9k   3.3k   3.0k   3.3k   3.5k   3.0k   3.3k   3.3k   3.4k
+[13:37:15]   2013    5.3k   5.8k  10.0k  19.3k  10.9k   7.8k   8.3k   8.7k   7.6k  12.0k  25.2k  24.9k
+[13:37:15]   2014   21.9k  26.8k  26.2k  19.3k  19.4k  19.3k  20.6k  18.9k  19.4k  20.2k  20.3k  21.6k
+[13:37:15]   2015   26.6k  22.3k  23.2k  22.0k  21.1k  21.8k  24.8k  23.9k  19.6k  21.1k  20.7k  20.9k
+[13:37:15]   2016   27.1k  23.2k  23.5k  23.8k  23.4k  27.3k  25.5k  26.0k  23.9k  23.0k  24.7k  25.8k
+[13:37:15]   2017   35.2k  32.0k  37.6k  31.2k  39.9k  42.1k  44.6k  54.4k  52.4k  59.3k  84.6k 117.0k
+[13:37:15]   2018  116.0k  78.8k  67.7k  59.0k  59.4k  59.4k  60.3k  62.0k  55.9k  57.7k  49.6k  48.7k
+[13:37:15]   2019   50.4k  41.4k  42.8k  44.5k  45.4k  47.0k  48.4k  48.9k  40.7k  41.3k  39.7k  37.0k
+[13:37:15]   2020   49.3k  68.8k 107.2k  84.5k  84.0k  95.7k  84.2k  81.4k  70.5k  68.6k  82.9k 100.3k
+[13:37:15]   2021  666.1k 586.1k 246.6k 174.4k 190.7k 196.6k 127.3k 142.7k 121.7k 127.4k 139.8k 113.6k
+[13:37:15]   2022  116.6k  86.0k  80.6k  74.3k  78.0k  64.9k  59.0k  93.1k  64.5k  68.2k  69.6k  64.3k
+[13:37:15]   2023   66.5k  61.2k  74.5k      1      .      .   1.5k   2.1k   1.2k   1.3k   1.3k   1.5k
+[13:37:15]   2024    2.1k   3.5k   3.9k   2.8k   3.3k   2.8k   2.7k   2.9k   2.0k   2.1k   2.6k   2.3k
+[13:37:15]   2025    2.4k   2.5k   2.5k   2.5k   2.1k   1.9k   2.4k   2.0k   1.8k   1.7k   1.4k   1.2k
+[13:37:15]   2026   47.9k  44.6k  45.7k  46.4k  47.7k  43.4k   2.6k      .      .      .      .      .
+[13:37:17] --- DATA COVERAGE: posts per month | source = stocktwits ---
+[13:37:17]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[13:37:17]   2023       .      .      .      .      .      .      .      .      .      .      .      3
+[13:37:17]   2024       .      .      .      .      .      .      .      4      .      1      2      1
+[13:37:17]   2025       .      1      1      1      .      2      1      6      1      .      5      5
+[13:37:17]   2026       3     15     15     51    119    423   5.6k      .      .      .      .      .
+[13:37:18] --- DATA COVERAGE: posts per month | source = x ---
+[13:37:18]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[13:37:18]   2017       .      .      .      .      .      1      .      .      .      .      .      .
+[13:37:18]   2025       .      .      .      .      1      .      .      .      1      .      .      1
+[13:37:18]   2026       .      .      .      1      .      2   2.8k      .      .      .      .      .
+[13:37:18] ('.' = NO data that month - a gap, not a quiet month)
+[13:37:19] --- WINDOW CHECK: view 2026-01-01 -> 2026-07-16 | aggregates span 2017-01-01 -> 2026-07-16 ---
+[13:37:19]   reddit     [OK] 1,374 mentions over 40 days (~20% of the window)
+[13:37:19]   stocktwits [OK] 13,144 mentions over 116 days (~59% of the window)
+[13:37:19]   x          [OK] 4,930 mentions over 11 days (~6% of the window)
+[13:37:19] backtest: aggregates + signals are up to date - only re-rendering the overlays for 2026-01-01 -> 2026-07-16
+[13:37:19] snapshot -> C:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals.parquet
+[13:37:19] snapshot -> C:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals_tickers.parquet
+[13:37:19] pulling Bloomberg prices for the overlays (Terminal must be open)
+[13:37:19] RUN  C:\Python312\python.exe pull_bloomberg_prices.py
+[13:37:25] running notebook 11_overlay_ticker_mentions (output streams below)
+[13:37:25] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\11_overlay_ticker_mentions.ipynb --output 11_overlay_ticker_mentions.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[13:37:41] ok   11_overlay_ticker_mentions
+[13:37:41] running notebook 12_overlay_ticker_first_derivative (output streams below)
+[13:37:41] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\12_overlay_ticker_first_derivative.ipynb --output 12_overlay_ticker_first_derivative.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[13:38:23] ok   12_overlay_ticker_first_derivative
+[13:38:23] running notebook 13_overlay_theme_first_derivative (output streams below)
+[13:38:23] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\13_overlay_theme_first_derivative.ipynb --output 13_overlay_theme_first_derivative.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[13:38:45] ok   13_overlay_theme_first_derivative
+[13:38:45] running notebook 14_overlay_theme_conviction (output streams below)
+[13:38:45] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\14_overlay_theme_conviction.ipynb --output 14_overlay_theme_conviction.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[13:39:08] ok   14_overlay_theme_conviction
+[13:39:08] running notebook 15_overlay_trading_signals (output streams below)
+[13:39:08] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\15_overlay_trading_signals.ipynb --output 15_overlay_trading_signals.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[13:39:26] ok   15_overlay_trading_signals
+[13:39:26] running notebook 16_overlay_theme_trading_signals (output streams below)
+[13:39:26] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\16_overlay_theme_trading_signals.ipynb --output 16_overlay_theme_trading_signals.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[13:39:48] ok   16_overlay_theme_trading_signals
+[13:39:48] backtest view: nothing rebuilt, nothing published
+[13:39:48] safety check: ABSTRACTED_DATA is text-free?
+[13:39:48]   daily_ticker_counts.parquet               1.64 MB | ['date', 'ticker', 'mention_count']
+[13:39:48]   daily_ticker_counts_by_source.parquet     1.82 MB | ['date', 'ticker', 'source', 'mention_count']
+[13:39:48]   daily_ticker_sentiment.parquet            5.18 MB | ['date', 'ticker', 'n_posts', 'avg_sentiment', 'net_bullish']
+[13:39:48]   daily_theme_counts.parquet                0.18 MB | ['date', 'theme', 'mention_count']
+[13:39:48]   daily_theme_sentiment.parquet             1.16 MB | ['date', 'theme', 'n_posts', 'avg_sentiment', 'net_bullish']
+[13:39:48]   daily_term_counts.parquet                 0.13 MB | ['date', 'term', 'mention_count']
+[13:39:48] safety check: PASS - safe to commit
+[13:39:48] 
+[13:39:48] ============================================================
+[13:39:48] RUN SUMMARY
+[13:39:48]   window        : 2026-01-01 -> 2026-07-16
+[13:39:48]   machine/path  : EXTERNAL | BACKTEST view (re-render overlays only)
+[13:39:50]   post store    : 8,241,633 posts total
+[13:39:54]     reddit     newest 2026-07-16
+[13:39:54]     stocktwits newest 2026-07-18
+[13:39:54]     x          newest 2026-07-16
+[13:39:55]   aggregates    : 2017-01-01 -> 2026-07-16
+[13:39:55]   theme signals : 414 on file
+[13:39:55]   ticker signals : 346 on file
+[13:39:55]   price overlays: rendered (11-16)
+[13:39:55]   safety check  : PASS
+[13:39:55] ============================================================
+[13:44:19] ============================================================
+[13:44:19] UPDATE DATA
+[13:44:19]   window : 2026-01-08 -> 2026-06-08
+[13:44:19]   machine: EXTERNAL (raw store) (posts.parquet present)
+[13:44:19]   path   : FULL rebuild over 2017-01-01 -> today
+[13:44:19]   fetch  : no (backtest or --skip-fetch)
+[13:44:19] ============================================================
+[13:44:23] fetch skipped
+[13:44:23] merging live raw -> posts.parquet (close Jupyter first)
+[13:44:23] RUN  C:\Python312\python.exe data_ingestion/scripts/merge_live.py
+[13:47:45] --- DATA COVERAGE: posts per month | source = reddit ---
+[13:47:45]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[13:47:45]   2008       .      .     31     15      1      8     18     25     35     55     66     61
+[13:47:45]   2009      47     87     92     93     74     86    170    157    196     98     87    113
+[13:47:45]   2010     107    103    135    241    290    180    204    203    261    236    254    306
+[13:47:45]   2011     575    559    569    700   1.4k   2.8k   1.7k   1.8k   1.5k   1.7k   1.9k   2.1k
+[13:47:45]   2012    3.0k   2.9k   3.1k   2.9k   3.3k   3.0k   3.3k   3.5k   3.0k   3.3k   3.3k   3.4k
+[13:47:45]   2013    5.3k   5.8k  10.0k  19.3k  10.9k   7.8k   8.3k   8.7k   7.6k  12.0k  25.2k  24.9k
+[13:47:45]   2014   21.9k  26.8k  26.2k  19.3k  19.4k  19.3k  20.6k  18.9k  19.4k  20.2k  20.3k  21.6k
+[13:47:45]   2015   26.6k  22.3k  23.2k  22.0k  21.1k  21.8k  24.8k  23.9k  19.6k  21.1k  20.7k  20.9k
+[13:47:45]   2016   27.1k  23.2k  23.5k  23.8k  23.4k  27.3k  25.5k  26.0k  23.9k  23.0k  24.7k  25.8k
+[13:47:45]   2017   35.2k  32.0k  37.6k  31.2k  39.9k  42.1k  44.6k  54.4k  52.4k  59.3k  84.6k 117.0k
+[13:47:45]   2018  116.0k  78.8k  67.7k  59.0k  59.4k  59.4k  60.3k  62.0k  55.9k  57.7k  49.6k  48.7k
+[13:47:45]   2019   50.4k  41.4k  42.8k  44.5k  45.4k  47.0k  48.4k  48.9k  40.7k  41.3k  39.7k  37.0k
+[13:47:45]   2020   49.3k  68.8k 107.2k  84.5k  84.0k  95.7k  84.2k  81.4k  70.5k  68.6k  82.9k 100.3k
+[13:47:45]   2021  666.1k 586.1k 246.6k 174.4k 190.7k 196.6k 127.3k 142.7k 121.7k 127.4k 139.8k 113.6k
+[13:47:45]   2022  116.6k  86.0k  80.6k  74.3k  78.0k  64.9k  59.0k  93.1k  64.5k  68.2k  69.6k  64.3k
+[13:47:45]   2023   66.5k  61.2k  74.5k      1      .      .   1.5k   2.1k   1.2k   1.3k   1.3k   1.5k
+[13:47:45]   2024    2.1k   3.5k   3.9k   2.8k   3.3k   2.8k   2.7k   2.9k   2.0k   2.1k   2.6k   2.3k
+[13:47:45]   2025    2.4k   2.5k   2.5k   2.5k   2.1k   1.9k   2.4k   2.0k   1.8k   1.7k   1.4k   1.2k
+[13:47:45]   2026   47.9k  44.6k  45.7k  46.4k  47.7k  43.4k   9.0k      .      .      .      .      .
+[13:47:47] --- DATA COVERAGE: posts per month | source = stocktwits ---
+[13:47:47]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[13:47:47]   2023       .      .      .      .      .      .      .      .      .      .      .      3
+[13:47:47]   2024       .      .      .      .      .      .      .      4      .      1      2      1
+[13:47:47]   2025       .      1      1      1      .      2      1      6      1      .      5      5
+[13:47:47]   2026       3     15     15     51    119    423   5.6k      .      .      .      .      .
+[13:47:48] --- DATA COVERAGE: posts per month | source = x ---
+[13:47:48]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[13:47:48]   2017       .      .      .      .      .      1      .      .      .      .      .      .
+[13:47:48]   2025       .      .      .      .      1      .      .      .      1      .      .      1
+[13:47:48]   2026       .      .      .      1      1      2   3.3k      .      .      .      .      .
+[13:47:48] ('.' = NO data that month - a gap, not a quiet month)
+[13:47:49] --- WINDOW CHECK: view 2026-01-08 -> 2026-06-08 | aggregates span 2017-01-01 -> 2026-07-16 ---
+[13:47:49]   reddit     [OK] 29 mentions over 13 days (~9% of the window)
+[13:47:49]   stocktwits [OK] 753 mentions over 78 days (~52% of the window)
+[13:47:49]   x          [NO DATA in window] this source spans 2017-01-01 -> 2026-07-16
+[13:48:33] full chain: building aggregates over 2017-01-01 -> today (view window 2026-01-08 -> 2026-06-08 applies to the overlays)
+[13:48:33] running notebook 01_clean_data (output streams below)
+[13:48:33] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\01_clean_data.ipynb --output 01_clean_data.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=3600
+[13:50:46] ok   01_clean_data
+[13:50:46] building all aggregates over 2017-01-01 -> today (one parallel pass; cached sentiment)
+[13:50:46] RUN  C:\Python312\python.exe data_ingestion/scripts/build_aggregates.py --start 2017-01-01
+[13:58:33] building rolling term counts (emerging-term detection)
+[13:58:33] RUN  C:\Python312\python.exe data_ingestion/scripts/build_term_counts.py
+[14:02:51] running notebook 08_ticker_conviction (output streams below)
+[14:02:51] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\08_ticker_conviction.ipynb --output 08_ticker_conviction.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=3600
+[14:03:38] ok   08_ticker_conviction
+[14:03:38] running notebook 09_theme_conviction (output streams below)
+[14:03:38] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\09_theme_conviction.ipynb --output 09_theme_conviction.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=3600
+[14:03:57] ok   09_theme_conviction
+[14:03:57] running notebook 10_trading_signals (output streams below)
+[14:03:57] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\10_trading_signals.ipynb --output 10_trading_signals.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=3600
+[14:04:38] ok   10_trading_signals
+[14:04:38] snapshot -> C:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals.parquet
+[14:04:38] snapshot -> C:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals_tickers.parquet
+[14:04:38] pulling Bloomberg prices for the overlays (Terminal must be open)
+[14:04:38] RUN  C:\Python312\python.exe pull_bloomberg_prices.py
+[14:04:48] running notebook 11_overlay_ticker_mentions (output streams below)
+[14:04:48] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\11_overlay_ticker_mentions.ipynb --output 11_overlay_ticker_mentions.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[14:05:02] ok   11_overlay_ticker_mentions
+[14:05:02] running notebook 12_overlay_ticker_first_derivative (output streams below)
+[14:05:02] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\12_overlay_ticker_first_derivative.ipynb --output 12_overlay_ticker_first_derivative.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[14:05:34] ok   12_overlay_ticker_first_derivative
+[14:05:34] running notebook 13_overlay_theme_first_derivative (output streams below)
+[14:05:34] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\13_overlay_theme_first_derivative.ipynb --output 13_overlay_theme_first_derivative.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[14:05:49] ok   13_overlay_theme_first_derivative
+[14:05:49] running notebook 14_overlay_theme_conviction (output streams below)
+[14:05:49] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\14_overlay_theme_conviction.ipynb --output 14_overlay_theme_conviction.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[14:06:03] ok   14_overlay_theme_conviction
+[14:06:03] running notebook 15_overlay_trading_signals (output streams below)
+[14:06:03] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\15_overlay_trading_signals.ipynb --output 15_overlay_trading_signals.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[14:06:17] ok   15_overlay_trading_signals
+[14:06:17] running notebook 16_overlay_theme_trading_signals (output streams below)
+[14:06:17] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\16_overlay_theme_trading_signals.ipynb --output 16_overlay_theme_trading_signals.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[14:06:32] ok   16_overlay_theme_trading_signals
+[14:06:32] publishing aggregates -> ABSTRACTED_DATA
+[14:06:32] safety check: ABSTRACTED_DATA is text-free?
+[14:06:32]   daily_ticker_counts.parquet               0.72 MB | ['date', 'ticker', 'mention_count']
+[14:06:32]   daily_ticker_counts_by_source.parquet     0.72 MB | ['date', 'ticker', 'source', 'mention_count']
+[14:06:32]   daily_ticker_sentiment.parquet            1.92 MB | ['date', 'ticker', 'n_posts', 'avg_sentiment', 'net_bullish']
+[14:06:32]   daily_theme_counts.parquet                0.19 MB | ['date', 'theme', 'mention_count']
+[14:06:32]   daily_theme_sentiment.parquet             1.14 MB | ['date', 'theme', 'n_posts', 'avg_sentiment', 'net_bullish']
+[14:06:32]   daily_term_counts.parquet                 2.11 MB | ['date', 'term', 'mention_count']
+[14:06:32] safety check: PASS - safe to commit
+[14:06:32] 
+[14:06:32] ============================================================
+[14:06:32] RUN SUMMARY
+[14:06:32]   window        : 2026-01-08 -> 2026-06-08
+[14:06:32]   machine/path  : EXTERNAL | FULL rebuild over 2017-01-01 -> today
+[14:06:33]   post store    : 8,248,511 posts total
+[14:06:35]     reddit     newest 2026-07-18
+[14:06:35]     stocktwits newest 2026-07-18
+[14:06:35]     x          newest 2026-07-18
+[14:06:35]   aggregates    : 2017-01-01 -> 2026-07-18
+[14:06:35]   theme signals : 97 on file
+[14:06:35]   ticker signals : 346 on file
+[14:06:35]   price overlays: rendered (11-16)
+[14:06:35]   safety check  : PASS
+[14:06:35] ============================================================
+[14:07:39] ============================================================
+[14:07:39] UPDATE DATA
+[14:07:39]   window : 2026-01-08 -> 2026-06-08
+[14:07:39]   machine: EXTERNAL (raw store) (posts.parquet present)
+[14:07:39]   path   : BACKTEST view (re-render overlays only)
+[14:07:39]   fetch  : no (backtest or --skip-fetch)
+[14:07:39] ============================================================
+[14:07:44] fetch skipped
+[14:07:44] backtest, nothing fetched - live merge skipped
+[14:07:49] --- DATA COVERAGE: posts per month | source = reddit ---
+[14:07:49]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[14:07:49]   2008       .      .     31     15      1      8     18     25     35     55     66     61
+[14:07:49]   2009      47     87     92     93     74     86    170    157    196     98     87    113
+[14:07:49]   2010     107    103    135    241    290    180    204    203    261    236    254    306
+[14:07:49]   2011     575    559    569    700   1.4k   2.8k   1.7k   1.8k   1.5k   1.7k   1.9k   2.1k
+[14:07:49]   2012    3.0k   2.9k   3.1k   2.9k   3.3k   3.0k   3.3k   3.5k   3.0k   3.3k   3.3k   3.4k
+[14:07:49]   2013    5.3k   5.8k  10.0k  19.3k  10.9k   7.8k   8.3k   8.7k   7.6k  12.0k  25.2k  24.9k
+[14:07:49]   2014   21.9k  26.8k  26.2k  19.3k  19.4k  19.3k  20.6k  18.9k  19.4k  20.2k  20.3k  21.6k
+[14:07:49]   2015   26.6k  22.3k  23.2k  22.0k  21.1k  21.8k  24.8k  23.9k  19.6k  21.1k  20.7k  20.9k
+[14:07:49]   2016   27.1k  23.2k  23.5k  23.8k  23.4k  27.3k  25.5k  26.0k  23.9k  23.0k  24.7k  25.8k
+[14:07:49]   2017   35.2k  32.0k  37.6k  31.2k  39.9k  42.1k  44.6k  54.4k  52.4k  59.3k  84.6k 117.0k
+[14:07:49]   2018  116.0k  78.8k  67.7k  59.0k  59.4k  59.4k  60.3k  62.0k  55.9k  57.7k  49.6k  48.7k
+[14:07:49]   2019   50.4k  41.4k  42.8k  44.5k  45.4k  47.0k  48.4k  48.9k  40.7k  41.3k  39.7k  37.0k
+[14:07:49]   2020   49.3k  68.8k 107.2k  84.5k  84.0k  95.7k  84.2k  81.4k  70.5k  68.6k  82.9k 100.3k
+[14:07:49]   2021  666.1k 586.1k 246.6k 174.4k 190.7k 196.6k 127.3k 142.7k 121.7k 127.4k 139.8k 113.6k
+[14:07:49]   2022  116.6k  86.0k  80.6k  74.3k  78.0k  64.9k  59.0k  93.1k  64.5k  68.2k  69.6k  64.3k
+[14:07:49]   2023   66.5k  61.2k  74.5k      1      .      .   1.5k   2.1k   1.2k   1.3k   1.3k   1.5k
+[14:07:49]   2024    2.1k   3.5k   3.9k   2.8k   3.3k   2.8k   2.7k   2.9k   2.0k   2.1k   2.6k   2.3k
+[14:07:49]   2025    2.4k   2.5k   2.5k   2.5k   2.1k   1.9k   2.4k   2.0k   1.8k   1.7k   1.4k   1.2k
+[14:07:49]   2026   47.9k  44.6k  45.7k  46.4k  47.7k  43.4k   9.0k      .      .      .      .      .
+[14:07:49] --- DATA COVERAGE: posts per month | source = stocktwits ---
+[14:07:49]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[14:07:49]   2023       .      .      .      .      .      .      .      .      .      .      .      3
+[14:07:49]   2024       .      .      .      .      .      .      .      4      .      1      2      1
+[14:07:49]   2025       .      1      1      1      .      2      1      6      1      .      5      5
+[14:07:49]   2026       3     15     15     51    119    423   5.6k      .      .      .      .      .
+[14:07:50] --- DATA COVERAGE: posts per month | source = x ---
+[14:07:50]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[14:07:50]   2017       .      .      .      .      .      1      .      .      .      .      .      .
+[14:07:50]   2025       .      .      .      .      1      .      .      .      1      .      .      1
+[14:07:50]   2026       .      .      .      1      1      2   3.3k      .      .      .      .      .
+[14:07:50] ('.' = NO data that month - a gap, not a quiet month)
+[14:07:50] --- WINDOW CHECK: view 2026-01-08 -> 2026-06-08 | aggregates span 2017-01-01 -> 2026-07-18 ---
+[14:07:50]   reddit     [OK] 44,126 mentions over 152 days (~100% of the window)
+[14:07:50]   stocktwits [OK] 755 mentions over 80 days (~53% of the window)
+[14:07:50]   x          [NO DATA in window] this source spans 2025-09-15 -> 2026-07-18
+[14:07:50] backtest: the aggregates are NEWER than the conviction/signal outputs (fresh pull?) - running 08/09/10 once to refresh them
+[14:07:50] running notebook 08_ticker_conviction (output streams below)
+[14:07:50] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\08_ticker_conviction.ipynb --output 08_ticker_conviction.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=3600
+[14:08:25] ok   08_ticker_conviction
+[14:08:25] running notebook 09_theme_conviction (output streams below)
+[14:08:25] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\09_theme_conviction.ipynb --output 09_theme_conviction.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=3600
+[14:08:43] ok   09_theme_conviction
+[14:08:43] running notebook 10_trading_signals (output streams below)
+[14:08:43] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\10_trading_signals.ipynb --output 10_trading_signals.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=3600
+[14:09:26] ok   10_trading_signals
+[14:09:26] snapshot -> c:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals.parquet
+[14:09:26] snapshot -> c:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals_tickers.parquet
+[14:09:26] pulling Bloomberg prices for the overlays (Terminal must be open)
+[14:09:26] RUN  C:\Python312\python.exe pull_bloomberg_prices.py
+[14:09:35] running notebook 11_overlay_ticker_mentions (output streams below)
+[14:09:35] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\11_overlay_ticker_mentions.ipynb --output 11_overlay_ticker_mentions.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[14:09:49] ok   11_overlay_ticker_mentions
+[14:09:49] running notebook 12_overlay_ticker_first_derivative (output streams below)
+[14:09:49] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\12_overlay_ticker_first_derivative.ipynb --output 12_overlay_ticker_first_derivative.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[14:10:22] ok   12_overlay_ticker_first_derivative
+[14:10:22] running notebook 13_overlay_theme_first_derivative (output streams below)
+[14:10:22] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\13_overlay_theme_first_derivative.ipynb --output 13_overlay_theme_first_derivative.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[14:10:37] ok   13_overlay_theme_first_derivative
+[14:10:37] running notebook 14_overlay_theme_conviction (output streams below)
+[14:10:37] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\14_overlay_theme_conviction.ipynb --output 14_overlay_theme_conviction.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[14:10:50] ok   14_overlay_theme_conviction
+[14:10:50] running notebook 15_overlay_trading_signals (output streams below)
+[14:10:50] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\15_overlay_trading_signals.ipynb --output 15_overlay_trading_signals.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[14:11:05] ok   15_overlay_trading_signals
+[14:11:05] running notebook 16_overlay_theme_trading_signals (output streams below)
+[14:11:05] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\16_overlay_theme_trading_signals.ipynb --output 16_overlay_theme_trading_signals.tmp.ipynb --output-dir c:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=1800
+[14:11:19] ok   16_overlay_theme_trading_signals
+[14:11:19] backtest view: nothing rebuilt, nothing published
+[14:11:19] safety check: ABSTRACTED_DATA is text-free?
+[14:11:19]   daily_ticker_counts.parquet               0.72 MB | ['date', 'ticker', 'mention_count']
+[14:11:19]   daily_ticker_counts_by_source.parquet     0.72 MB | ['date', 'ticker', 'source', 'mention_count']
+[14:11:19]   daily_ticker_sentiment.parquet            1.92 MB | ['date', 'ticker', 'n_posts', 'avg_sentiment', 'net_bullish']
+[14:11:19]   daily_theme_counts.parquet                0.19 MB | ['date', 'theme', 'mention_count']
+[14:11:19]   daily_theme_sentiment.parquet             1.14 MB | ['date', 'theme', 'n_posts', 'avg_sentiment', 'net_bullish']
+[14:11:19]   daily_term_counts.parquet                 2.11 MB | ['date', 'term', 'mention_count']
+[14:11:19] safety check: PASS - safe to commit
+[14:11:19] 
+[14:11:19] ============================================================
+[14:11:19] RUN SUMMARY
+[14:11:19]   window        : 2026-01-08 -> 2026-06-08
+[14:11:19]   machine/path  : EXTERNAL | BACKTEST view (re-render overlays only)
+[14:11:21]   post store    : 8,248,511 posts total
+[14:11:22]     reddit     newest 2026-07-18
+[14:11:22]     stocktwits newest 2026-07-18
+[14:11:22]     x          newest 2026-07-18
+[14:11:22]   aggregates    : 2017-01-01 -> 2026-07-18
+[14:11:22]   theme signals : 97 on file
+[14:11:22]   ticker signals : 346 on file
+[14:11:22]   price overlays: rendered (11-16)
+[14:11:22]   safety check  : PASS
+[14:11:22] ============================================================
+[14:14:23] ============================================================
+[14:14:23] UPDATE DATA
+[14:14:23]   window : 2025-07-18 -> 2026-06-08
+[14:14:23]   machine: EXTERNAL (raw store) (posts.parquet present)
+[14:14:23]   path   : BACKTEST view (re-render overlays only)
+[14:14:23]   fetch  : no (backtest or --skip-fetch)
+[14:14:23] ============================================================
+[14:14:31] fetch skipped
+[14:14:31] backtest, nothing fetched - live merge skipped
+[14:14:46] --- DATA COVERAGE: posts per month | source = reddit ---
+[14:14:46]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[14:14:46]   2008       .      .     31     15      1      8     18     25     35     55     66     61
+[14:14:46]   2009      47     87     92     93     74     86    170    157    196     98     87    113
+[14:14:46]   2010     107    103    135    241    290    180    204    203    261    236    254    306
+[14:14:46]   2011     575    559    569    700   1.4k   2.8k   1.7k   1.8k   1.5k   1.7k   1.9k   2.1k
+[14:14:46]   2012    3.0k   2.9k   3.1k   2.9k   3.3k   3.0k   3.3k   3.5k   3.0k   3.3k   3.3k   3.4k
+[14:14:46]   2013    5.3k   5.8k  10.0k  19.3k  10.9k   7.8k   8.3k   8.7k   7.6k  12.0k  25.2k  24.9k
+[14:14:46]   2014   21.9k  26.8k  26.2k  19.3k  19.4k  19.3k  20.6k  18.9k  19.4k  20.2k  20.3k  21.6k
+[14:14:46]   2015   26.6k  22.3k  23.2k  22.0k  21.1k  21.8k  24.8k  23.9k  19.6k  21.1k  20.7k  20.9k
+[14:14:46]   2016   27.1k  23.2k  23.5k  23.8k  23.4k  27.3k  25.5k  26.0k  23.9k  23.0k  24.7k  25.8k
+[14:14:46]   2017   35.2k  32.0k  37.6k  31.2k  39.9k  42.1k  44.6k  54.4k  52.4k  59.3k  84.6k 117.0k
+[14:14:46]   2018  116.0k  78.8k  67.7k  59.0k  59.4k  59.4k  60.3k  62.0k  55.9k  57.7k  49.6k  48.7k
+[14:14:46]   2019   50.4k  41.4k  42.8k  44.5k  45.4k  47.0k  48.4k  48.9k  40.7k  41.3k  39.7k  37.0k
+[14:14:46]   2020   49.3k  68.8k 107.2k  84.5k  84.0k  95.7k  84.2k  81.4k  70.5k  68.6k  82.9k 100.3k
+[14:14:46]   2021  666.1k 586.1k 246.6k 174.4k 190.7k 196.6k 127.3k 142.7k 121.7k 127.4k 139.8k 113.6k
+[14:14:46]   2022  116.6k  86.0k  80.6k  74.3k  78.0k  64.9k  59.0k  93.1k  64.5k  68.2k  69.6k  64.3k
+[14:14:46]   2023   66.5k  61.2k  74.5k      1      .      .   1.5k   2.1k   1.2k   1.3k   1.3k   1.5k
+[14:14:46]   2024    2.1k   3.5k   3.9k   2.8k   3.3k   2.8k   2.7k   2.9k   2.0k   2.1k   2.6k   2.3k
+[14:14:46]   2025    2.4k   2.5k   2.5k   2.5k   2.1k   1.9k   2.4k   2.0k   1.8k   1.7k   1.4k   1.2k
+[14:14:46]   2026   47.9k  44.6k  45.7k  46.4k  47.7k  43.4k   9.0k      .      .      .      .      .
+[14:14:47] --- DATA COVERAGE: posts per month | source = stocktwits ---
+[14:14:47]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[14:14:47]   2023       .      .      .      .      .      .      .      .      .      .      .      3
+[14:14:47]   2024       .      .      .      .      .      .      .      4      .      1      2      1
+[14:14:47]   2025       .      1      1      1      .      2      1      6      1      .      5      5
+[14:14:47]   2026       3     15     15     51    119    423   5.6k      .      .      .      .      .
+[14:14:49] --- DATA COVERAGE: posts per month | source = x ---
+[14:14:49]   year     Jan    Feb    Mar    Apr    May    Jun    Jul    Aug    Sep    Oct    Nov    Dec
+[14:14:49]   2017       .      .      .      .      .      1      .      .      .      .      .      .
+[14:14:49]   2025       .      .      .      .      1      .      .      .      1      .      .      1
+[14:14:49]   2026       .      .      .      1      1      2   3.3k      .      .      .      .      .
+[14:14:49] ('.' = NO data that month - a gap, not a quiet month)
+[14:14:49] --- WINDOW CHECK: view 2025-07-18 -> 2026-06-08 | aggregates span 2017-01-01 -> 2026-07-18 ---
+[14:14:49]   reddit     [OK] 48,858 mentions over 326 days (~100% of the window)
+[14:14:49]   stocktwits [OK] 802 mentions over 94 days (~29% of the window)
+[14:14:49]   x          [OK] 1 mentions over 1 days (~0% of the window)
+[14:14:49] backtest: the aggregates are NEWER than the conviction/signal outputs (fresh pull?) - running 08/09/10 once to refresh them
+[14:14:49] running notebook 08_ticker_conviction (output streams below)
+[14:14:49] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\08_ticker_conviction.ipynb --output 08_ticker_conviction.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=3600
+[14:16:01] ok   08_ticker_conviction
+[14:16:01] running notebook 09_theme_conviction (output streams below)
+[14:16:01] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\09_theme_conviction.ipynb --output 09_theme_conviction.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=3600
+[14:16:24] ok   09_theme_conviction
+[14:16:24] running notebook 10_trading_signals (output streams below)
+[14:16:24] RUN  C:\Python312\python.exe -m nbconvert --to notebook --execute C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks\10_trading_signals.ipynb --output 10_trading_signals.tmp.ipynb --output-dir C:\Users\alexd\Desktop\GIC\RetailFlow1\notebooks --ExecutePreprocessor.timeout=3600
+[14:17:40] ok   10_trading_signals
+[14:17:40] snapshot -> C:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals.parquet
+[14:17:40] snapshot -> C:\Users\alexd\Desktop\GIC\RetailFlow1\data\processed\signal_snapshots\2026-07-18_trade_signals_tickers.parquet
+[14:17:40] pulling Bloomberg prices for the overlays (Terminal must be open)
+[14:17:40] RUN  C:\Python312\python.exe pull_bloomberg_prices.py

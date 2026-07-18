@@ -3,7 +3,7 @@
 # In the torrent, each name below has TWO files:
 #   <name>_submissions.zst  and  <name>_comments.zst
 #
-# The 15 names below match the _submissions.zst files in data/raw/ exactly.
+# The 17 names below match the _submissions.zst files in data/raw/ exactly.
 wallstreetbets
 investing
 stocks
@@ -19,7 +19,5 @@ Daytrading
 CryptoCurrency
 Bitcoin
 thetagang
-
-# --- wishlist: in the torrent but NOT downloaded yet ---
-# finance
-# Bogleheads
+finance
+Bogleheads

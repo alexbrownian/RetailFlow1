@@ -68,9 +68,9 @@ try:                     # posts contain emoji/links; avoid cp1252 crashes
 except Exception:
     pass
 
-# ============================ EDIT THIS =============================
-START_DATE = "2020-06-08"    # inclusive, 'YYYY-MM-DD'
-END_DATE = "2023-01-08"                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
+# ============================ EDIT THIS =============================  
+START_DATE = "2026-01-08"    # inclusive, 'YYYY-MM-DD'
+END_DATE = "2026-06-08"                # "" = LIVE (to newest); else EXCLUSIVE end e.g. "2021-11-01"
 PRICE_TOP_N = 150            # how many top-mentioned tickers the price pull covers
 
 FETCH_LOOKBACK_DAYS = 7      # how far back each live fetch reaches (top posts of
@@ -489,8 +489,13 @@ def main():
         log("folding live raw -> ABSTRACTED_DATA + hydrate (close Jupyter first)", fh)
         run([py, "api_calls/append_live_abstracted.py"], fh, dry, show=True)
     else:
-        log("merging live raw -> posts.parquet (close Jupyter first)", fh)
-        run([py, "data_ingestion/scripts/merge_live.py"], fh, dry, show=True)
+        if do_fetch or full_chain:
+            log("merging live raw -> posts.parquet (close Jupyter first)", fh)
+            run([py, "data_ingestion/scripts/merge_live.py"], fh, dry, show=True)
+        else:
+            # the merge streams the ENTIRE master (minutes) - pointless in a
+            # backtest where nothing was fetched, so skip it
+            log("backtest, nothing fetched - live merge skipped", fh)
         if live and not full_chain:
             # LIVE FAST PATH: recompute the last ~45 days of the aggregates
             # straight from posts.parquet and splice them onto the untouched
@@ -554,7 +559,7 @@ def main():
 
     if full_chain:
         # GUARD: months can be folded into ABSTRACTED_DATA on the OTHER
-        # machine (e.g. the 2026 gap-fill lives only on the work laptop).
+        # machine (e.g. the 2026 gap-fill lives only on the HP).
         # A --full here rebuilds from THIS machine's posts.parquet - if the
         # aggregates run ahead of the local master, the rebuild would
         # silently REVERT those months. Abort and explain instead.

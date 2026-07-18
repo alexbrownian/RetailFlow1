@@ -1,11 +1,11 @@
 # Which notebooks run where
 
-A notebook runs on the **work laptop** only if everything it reads is one of the
+A notebook runs on the **HP** only if everything it reads is one of the
 five text-free aggregates in `data/processed/` (put there by `hydrate()`).
 Notebooks that read the raw text (`posts.parquet` / `posts_slice.parquet`) can
 only run on the **producer** machine.
 
-| Notebook | Reads | Work laptop? |
+| Notebook | Reads | HP? |
 |---|---|---|
 | `01_clean_data` | `posts.parquet` (raw text) | ❌ producer only |
 | `02_mentions_over_time` | `posts_slice.parquet` (raw text) | ❌ producer only |
@@ -22,9 +22,9 @@ only run on the **producer** machine.
 | `13_overlay_theme_conviction` | theme conviction + `data/prices` | ✅ yes |
 | `14_overlay_trading_signals` | signals + `data/prices` | ✅ yes |
 
-**Runnable on the work laptop:** 03, 05, 08, 09, 10, 11, 12, 13, 14.
+**Runnable on the HP:** 03, 05, 08, 09, 10, 11, 12, 13, 14.
 **Producer only (need the raw text):** 01, 02, 04, 06, 07.
 
-`update_data.py` in work-laptop mode automatically runs only 08 → 09 → 10 (the
+`update_data.py` in HP mode automatically runs only 08 → 09 → 10 (the
 ones needed to refresh the signals). Run 03/05 and 11–14 by hand when you want
 them.

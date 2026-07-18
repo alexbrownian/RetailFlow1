@@ -36,7 +36,7 @@ SUBREDDITS = [
     "SecurityAnalysis", "ValueInvesting", "finance", "Bogleheads",
 ]
 
-PAUSE_S = 1.0            # polite gap between requests
+PAUSE_S = 0.3            # polite gap between requests
 APPEND_TO_MASTER = True  # fold the downloads into posts.parquet at the end
 # ===========================================================
 
@@ -126,11 +126,11 @@ def fetch_subreddit(sub):
 
 
 def fold_abstracted(files):
-    """WORK-LAPTOP path (no posts.parquet here): fold the downloaded posts
+    """HP path (no posts.parquet here): fold the downloaded posts
     STRAIGHT into the text-free ABSTRACTED_DATA aggregates, exactly like a
     live pull does. A gap ledger of folded post ids makes re-runs harmless
     (a post folds once, ever). The raw .zst files stay in data/raw/ - copy
-    them to the personal laptop's data/raw/ when convenient, otherwise the
+    them to the XPS's data/raw/ when convenient, otherwise the
     next --full there (which rebuilds from ITS master) would revert these
     months in the aggregates."""
     import io
@@ -178,16 +178,33 @@ def fold_abstracted(files):
     print(f"\nfolded {total:,} posts into ABSTRACTED_DATA (text-free).")
     print("next: run notebooks 08/09/10 (any update_data run does it), then")
     print("commit + push ABSTRACTED_DATA.")
-    print("NOTE: keep the arctic_*.zst files and copy them to the personal")
-    print("laptop's data/raw/ eventually - a --full there rebuilds from its")
+    print("NOTE: keep the arctic_*.zst files and copy them to the XPS's")
+    print("data/raw/ eventually - a --full there rebuilds from its")
     print("posts.parquet and would otherwise revert these months.")
     return 0
 
 
 def main():
+    # --live N : ignore the EDIT-THIS window and pull the last N days up to
+    # NOW - Arctic Shift archives Reddit within minutes, so this doubles as
+    # a live Reddit source (complete coverage, no credits). Overlap with
+    # previous pulls is harmless: ids dedup, filenames carry the window.
+    global START, END
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--live", type=int, metavar="DAYS", default=0,
+                    help="pull the last N days up to now instead of the "
+                         "configured window")
+    args = ap.parse_args()
+    if args.live:
+        import datetime as _dt
+        today = _dt.date.today()
+        START = (today - _dt.timedelta(days=args.live)).isoformat()
+        END = (today + _dt.timedelta(days=1)).isoformat()
+
     os.makedirs(RAW_DIR, exist_ok=True)
-    print(f"Arctic Shift gap fetch: {len(SUBREDDITS)} subreddits, "
-          f"{START} -> {END}")
+    print(f"Arctic Shift {'LIVE' if args.live else 'gap'} fetch: "
+          f"{len(SUBREDDITS)} subreddits, {START} -> {END}")
     files = []
     for sub in SUBREDDITS:
         files.append(fetch_subreddit(sub))
@@ -199,7 +216,7 @@ def main():
 
     master = os.path.join(ROOT, "data", "processed", "posts.parquet")
     if os.path.exists(master):
-        # PERSONAL laptop: the raw master exists - append into it
+        # XPS: the raw master exists - append into it
         print("\nappending everything into posts.parquet (dedup by id)...")
         code = subprocess.call(
             [sys.executable,
@@ -213,9 +230,9 @@ def main():
         print("next: python update_data.py --full  (aggregates over the new months)")
         return 0
 
-    # WORK laptop: no master here - fold text-free into ABSTRACTED_DATA
+    # HP: no master here - fold text-free into ABSTRACTED_DATA
     print("\nno posts.parquet on this machine -> folding straight into "
-          "ABSTRACTED_DATA (work-laptop mode)")
+          "ABSTRACTED_DATA (HP mode)")
     return fold_abstracted(files)
 
 

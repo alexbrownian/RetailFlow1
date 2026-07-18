@@ -77,7 +77,11 @@ def fetch_plan():
 
     return [
         ("StockTwits", True, "public API - no key needed", ["fetch_stocktwits.py"]),
-        ("Reddit", reddit_ok, reddit_why, ["fetch_reddit_live.py"]),
+        # Reddit now comes from Arctic Shift: complete per-subreddit
+        # coverage, near-real-time, free (no key). FetchLayer stays for X.
+        # fetch_reddit_live.py remains available as a manual fallback.
+        ("Reddit", True, "Arctic Shift public API - no key needed",
+         ["fetch_reddit_arctic.py"]),
         ("X", x_ok, x_why, ["fetch_x_live.py"]),
     ]
 
@@ -135,7 +139,8 @@ def main():
     print()
     failed = []
     # the two knobs travel to every fetcher that understands them
-    knobs = {"fetch_reddit_live.py": ["--lookback-days", str(args.lookback_days),
+    knobs = {"fetch_reddit_arctic.py": ["--lookback-days", str(args.lookback_days)],
+             "fetch_reddit_live.py": ["--lookback-days", str(args.lookback_days),
                                       "--max-credits", str(args.max_credits)],
              "fetch_x_live.py": ["--lookback-days", str(args.lookback_days),
                                  "--max-credits", str(args.max_credits)]}
